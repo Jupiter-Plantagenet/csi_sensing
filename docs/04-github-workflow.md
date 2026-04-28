@@ -16,12 +16,12 @@ If you have never installed git, do it now: [https://git-scm.com/downloads](http
 
 You'll need three things on your machine before any of these commands work: **git** (the version-control tool), **Python 3.10 or newer**, and **a way to run shell commands** — Terminal on macOS, Command Prompt or PowerShell on Windows, your normal shell on Linux. Install Python from [https://www.python.org/downloads/](https://www.python.org/downloads/) if you don't already have it.
 
-You'll also need access to the repo on GitHub. The repo URL is something the team will give you (it'll look like `https://github.com/<our-org>/<our-repo>.git`); ask George if you don't have it. If you run `git clone` and get an authentication error, that means GitHub doesn't recognize you yet — ask George and we'll either add you to the organization or set up an SSH key with you.
+You'll also need access to the repo on GitHub. The repo lives at [`https://github.com/Jupiter-Plantagenet/csi_sensing`](https://github.com/Jupiter-Plantagenet/csi_sensing); ask George if you can't access it. If you run `git clone` and get an authentication error, that means GitHub doesn't recognize you yet — ask George and we'll either add you to the organization or set up an SSH key with you.
 
 ```bash
 # Clone the repo to your laptop (replace the URL with the real one)
-git clone https://github.com/<our-org>/<our-repo>.git
-cd <our-repo>
+git clone https://github.com/Jupiter-Plantagenet/csi_sensing.git
+cd csi_sensing
 
 # Set up your name and email so commits attribute to you
 git config user.name  "Your Name"
