@@ -1,0 +1,25 @@
+# Minimal CI: checks that Python files are formatted with `black` and pass `ruff` linting.
+# Runs on every pull request and on every push to main.
+#
+# Cost: GitHub Actions is free and unmetered for public repositories. For private
+# repositories, GitHub gives 2000 free minutes per month. This workflow uses ~20
+# seconds per run, so cost is effectively zero either way.
+
+name: lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install black ruff
+      - run: black --check .
+      - run: ruff check .
