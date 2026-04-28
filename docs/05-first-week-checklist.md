@@ -21,11 +21,11 @@ Before you can do anything else, you need a working setup. Roughly thirty to six
 **Clone the repo.** "Cloning" means downloading a copy to your laptop. Open a terminal (Git Bash on Windows, Terminal on macOS, your shell on Linux) and run:
 
 ```bash
-git clone https://github.com/<our-org>/csi_sensing.git
+git clone https://github.com/Jupiter-Plantagenet/csi_sensing.git
 cd csi_sensing
 ```
 
-The `<our-org>` part will be filled in once the repo exists on GitHub. If you get an error that says "authentication failed" or "repository not found," it means GitHub doesn't recognize you yet — message George.
+If you get an error that says "authentication failed" or "repository not found," it means GitHub doesn't recognize you yet — message George.
 
 **Tell git who you are.** Commits are stamped with your name and email. Set them once, ever:
 
