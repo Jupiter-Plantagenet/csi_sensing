@@ -10,7 +10,7 @@ Read this once. Then come back to it whenever you are about to post a substantiv
 
 ## 1. Two ways to use AI, in plain terms
 
-**As a research assistant.** You direct it. You ask it to find and summarise credible papers. You ask it to list options you might not have thought of. You ask it to write a short script that runs a small numerical experiment. You read the output critically. You verify the citations. You run the script and look at the result. You form an opinion based on what you saw, not on what the AI said.
+**As a research assistant.** You direct it. You ask it to fetch and read credible papers — by opening the PDF or arXiv URL directly, not by paraphrasing search-result snippets — and report back what they actually say. You ask it to list options you might not have thought of. You ask it to write a short script that runs a small numerical experiment. You read the output critically. You verify the citations. You run the script and look at the result. You form an opinion based on what you saw, not on what the AI said.
 
 **As an oracle.** You ask "what should we do about X?", you get an answer, you post the answer. You did not verify anything. You do not know whether the citations are real. You do not know whether the recommendation actually applies to *our* project, *our* data, *our* compute budget.
 
@@ -25,7 +25,7 @@ When a Wave 3 issue (or any design discussion) asks you to weigh in, follow this
 1. **Read the issue body and the comment beneath it.** Both. The body says what is being decided; the comment explains the intuition and proposes a small experiment.
 2. **Frame your question for AI clearly.** Not "tell me about coherence bandwidth," but "list five published methods for estimating indoor coherence bandwidth from WiFi CSI data, with citations." The more constrained the question, the more useful the answer.
 3. **Get a list of options, longer than you would have come up with alone.** Treat the list as starting points, not conclusions.
-4. **Ask the AI for credible references for each option.** Demand citations with arXiv IDs, DOIs, or links to the actual paper. **Click through every one.** Throw out any that do not exist or do not say what the AI claimed they said. Hallucinated citations are common.
+4. **Ask the AI for credible references for each option.** Demand citations with arXiv IDs, DOIs, or links to the actual paper. **Click through every one.** Throw out any that do not exist or do not say what the AI claimed they said. Hallucinated citations are common. When you want the AI to summarise a referenced paper, tell it to read the paper directly — most modern assistants can fetch a PDF or open an arXiv URL — rather than rely on search-result snippets. A summary built from snippets is roughly as reliable as a Wikipedia lead paragraph; the actual paper is the primary source.
 5. **Pick the one or two options that look most promising.** Briefly, why each: what does the literature say, how hard is it to implement, does it match our setup.
 6. **Run a tiny experiment to back your pick.** This is the part most people skip and the part that matters most. The experiment can be:
    - A numerical simulation. Build a synthetic input, apply the method, plot what happens.
@@ -70,7 +70,7 @@ The point is never to abandon verification. The point is to make the cost of ver
 ## 5. Things AI is good at on this project
 
 - Listing candidate methods you might not have considered.
-- Finding and summarising published papers, with citations you must verify.
+- Fetching and reading published papers (PDF or arXiv) and summarising what they actually say — distinct from paraphrasing search-result snippets, which is much shallower. Ask for the former; verify citations either way.
 - Writing short scripts to simulate signals, apply transforms, and plot results.
 - Helping translate equations from a paper into runnable code.
 - Catching obvious errors in your own writing.
@@ -81,6 +81,7 @@ The point is never to abandon verification. The point is to make the cost of ver
 - Knowing what the team has already decided. Always cross-check against the docs.
 - Producing reliable citations without verification. It will hallucinate plausible-looking but non-existent papers.
 - Telling you whether a result is correct. It will tell you the result looks correct, which is different.
+- Distinguishing "I read the paper" from "I paraphrased a search-result snippet about the paper," unless you ask explicitly. The two answers can read identically and differ in accuracy.
 
 ---
 
