@@ -25,11 +25,11 @@ Each is described in detail in [`docs/03-the-project.md`](docs/03-the-project.md
 | Name | Student ID |
 |---|---|
 | George Chidera Akor | 20246163 |
+| Josiah Ayoola Isong | 2025210186 |
+| Collins Izuchukwu Okafor | 20246171 |
 | Victor Ikenna Kanu | 20246166 |
 | Chigozie Athanasius Nnadiekwe | 20246125 |
 | Ihunanya Udodiri Ajakwe | 20245055 |
-| Josiah Ayoola Isong | 2025210186 |
-| Collins Izuchukwu Okafor | 20246171 |
 
 ---
 
