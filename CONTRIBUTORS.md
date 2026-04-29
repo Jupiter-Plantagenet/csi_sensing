@@ -9,3 +9,4 @@ Format: one line per person, alphabetical by first name.
 ---
 
 - George Chidera Akor (20246163) — wants to understand how physics-informed augmentation choices change what an SSL encoder learns.
+- Josiah Ayoola Isong (2025210186) - mostly just interested in engineering cool stuff tbh.
