@@ -12,3 +12,4 @@ Format: one line per person, alphabetical by first name.
 - Josiah Ayoola Isong (2025210186) - mostly just interested in engineering cool stuff tbh.
 - Victor Kanu (20246166) - interesting project, looking forward to all that is achieved in this group as it relates to the PI augmentation
 - Collins Izuchukwu Okafor (20246171) - learn more about csi design and simulation
+- Chigozie Nnadiekwe (20246125) - To understand how different augmentation technique affacts the CSI sensing
