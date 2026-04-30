@@ -9,6 +9,7 @@ Format: one line per person, alphabetical by first name.
 ---
 
 - George Chidera Akor (20246163) — wants to understand how physics-informed augmentation choices change what an SSL encoder learns.
+- Ihunanya Udodiri Ajakwe (20245055) - To learn how machines understand WiFi signal data for task like human activity recognision.
 - Josiah Ayoola Isong (2025210186) - mostly just interested in engineering cool stuff tbh.
 - Victor Kanu (20246166) - interesting project, looking forward to all that is achieved in this group as it relates to the PI augmentation
 - Collins Izuchukwu Okafor (20246171) - learn more about csi design and simulation
