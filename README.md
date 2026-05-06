@@ -45,6 +45,8 @@ If you are new to this whole area, read the docs in order. Each one assumes you'
 | 4 | [`docs/04-github-workflow.md`](docs/04-github-workflow.md) | How we coordinate work on this repo: issues, branches, pull requests, reviews. | ~20 min |
 | 5 | [`docs/05-first-week-checklist.md`](docs/05-first-week-checklist.md) | Step-by-step walkthrough of your first hour and your first pull request. Read this once you've been added to the repo. | ~20 min |
 | 6 | [`docs/06-using-ai-well.md`](docs/06-using-ai-well.md) | How to use AI assistants well on this project: as a research assistant, not an oracle. Read before posting on any design issue. | ~15 min |
+| 7 | [`docs/07-experiment-scaffold.md`](docs/07-experiment-scaffold.md) | Project conventions: encoder backbone, SSL framework, eval protocol, seeds, results layout. The reference every slice consults. | ~10 min |
+| 8 | [`docs/08-team-work-plan.md`](docs/08-team-work-plan.md) | The roadmap. Six independent tracer-bullet slices, one per teammate. Read this to find your slice. | ~25 min |
 
 If you only have **30 minutes**, read this README and `docs/03-the-project.md`. You'll be able to follow conversations and contribute to discussions, even if some of the technical context is fuzzy.
 
