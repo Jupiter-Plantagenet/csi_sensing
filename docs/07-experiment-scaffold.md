@@ -18,7 +18,7 @@ If you have not yet read [`08-team-work-plan.md`](08-team-work-plan.md), read it
 | SSL framework | SimCLR (NT-Xent loss). | Canonical, simpler than Barlow Twins, audience-recognisable. |
 | Evaluation protocol | Linear probe on a frozen encoder. | Cleaner causal claim about representation quality than full fine-tuning. |
 | Random seeds | 3 minimum. Mean ± std reported for every headline number. | Project-wide statistical-reporting convention. |
-| Cross-domain delta | `target_acc − source_acc` (absolute drop, in percentage points). | One project-wide convention to avoid subtle apples-to-oranges comparisons. |
+| Cross-domain drop | `source_acc − target_acc` (positive when target underperforms source, in percentage points). | One project-wide convention to avoid subtle apples-to-oranges comparisons. |
 | Label-fraction sweep | `{1, 5, 10, 50, 100}%`, with a per-class minimum-samples sanity check. | Standard SSL label-efficiency sweep. |
 | Comparison rule | Paired test across matched seeds. An improvement counts as "real" only if its mean exceeds 1 × the std-dev band of the baseline AND the sign is positive. | Cheap and clean for a class project; avoids p-hacking. |
 | Results directory | `results/<date>-<slice>-<short-description>/` containing `config.yaml`, `git_hash.txt`, `metrics.json`, and `notes.md`. | Per [`04-github-workflow.md`](04-github-workflow.md) section 7. |
@@ -53,9 +53,15 @@ Every headline number is the mean across at least 3 random seeds, reported with 
 
 The "improvement is real" rule is deliberately strict and simple: the candidate's mean must beat the baseline's `mean + 1 × std_dev` (and be positive in sign). This is more conservative than `p < 0.05` for small N and avoids p-hacking on a class-project budget.
 
-### Cross-domain delta
+### Cross-domain drop
 
-Absolute drop in percentage points: `target_acc − source_acc`. We pick this over relative-drop or retention because absolute drop reads correctly across the wide accuracy range (50%–95%) we expect to see. Slice writeups always state the source-domain accuracy alongside the target-domain accuracy; the delta is a derived number, not a primary one.
+Drop in percentage points: `source_acc − target_acc` — positive when the
+target domain underperforms the source domain (the typical case). We pick
+this over relative-drop or retention because an absolute, signed drop reads
+correctly across the wide accuracy range (50%–95%) we expect to see, and a
+positive number unambiguously means "performance got worse on the target."
+Slice writeups always state the source-domain accuracy alongside the
+target-domain accuracy; the drop is a derived number, not a primary one.
 
 ### Code layout
 
