@@ -16,7 +16,12 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from .augmentations import doppler_warp
+from .augmentations import (
+    doppler_warp,
+    gaussian_noise,
+    gaussian_then_mask,
+    random_subcarrier_mask,
+)
 from .data import CSI_A, CSI_S, NUM_CLASSES, StubCSI
 from .encoder import TinyCNN, count_parameters
 from .eval import linear_probe
@@ -24,6 +29,9 @@ from .ssl import SimCLR, pretrain_simclr
 
 AUGMENTATIONS = {
     "none": None,
+    "gaussian": gaussian_noise,
+    "mask": random_subcarrier_mask,
+    "generic": gaussian_then_mask,
     "doppler": doppler_warp,
 }
 
