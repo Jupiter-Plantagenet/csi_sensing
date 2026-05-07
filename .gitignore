@@ -35,3 +35,8 @@ results/
 *.ckpt
 *.pt
 wandb/
+
+# George's KICS paper artifacts (personal academic output, not project-tracked).
+# The slice's engineering work is committed; the paper itself lives locally only.
+# See docs/slice-1-afk-plan.md section 1 for the full commit-boundary rationale.
+papers/kics-george/
