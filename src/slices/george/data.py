@@ -126,25 +126,30 @@ def _crop_or_pad_time(x: torch.Tensor, target_t: int) -> torch.Tensor:
     return torch.cat([x, pad], dim=0)
 
 
-def load_widar3_dat(path: Path, time_steps: int = CSI_T) -> torch.Tensor:
+def load_widar3_dat(
+    path: Path,
+    time_steps: int = CSI_T,
+    nrxnum: int = 3,
+    ntxnum: int = 1,
+) -> torch.Tensor:
     """Parse one Widar3.0 .dat into a `(time_steps, S, A)` real tensor.
 
-    Uses `csiread.Intel` to parse the Intel-5300 CSI Tool format. The
-    parsed CSI is cast to a complex torch tensor, projected to real via
-    magnitude, and cropped/padded along time to `time_steps`. `S` and
-    `A` are taken from the parser; for the standard Widar3.0 setup
-    they're 30 and 3 respectively.
+    Uses `csiread.Intel` to parse the Intel-5300 CSI Tool format. csiread
+    returns CSI shaped `(Count, 30, Nrx, Ntx)`; we reshape to
+    `(Count, 30, Nrx*Ntx)` so the encoder's `S*A` channel dim is what we
+    expect. The defaults `nrxnum=3, ntxnum=1` match Widar3.0's standard
+    1-TX × 3-RX setup; csiread's library default is `ntxnum=2`, which
+    would produce 6 antenna channels here and silently break the encoder.
 
     csiread is imported lazily so the rest of this module loads even on
     machines that haven't installed it yet.
     """
     import csiread
 
-    parser = csiread.Intel(str(path))
+    parser = csiread.Intel(str(path), nrxnum=nrxnum, ntxnum=ntxnum)
     parser.read()
     csi = torch.from_numpy(parser.get_scaled_csi())  # (T, S, Nrx, Ntx) complex
     if csi.ndim == 4:
-        # Collapse Ntx into A. For Widar3.0 (1 TX × 3 RX) this is a no-op.
         csi = csi.reshape(csi.shape[0], csi.shape[1], -1)
     real = csi_complex_to_real(csi)
     return _crop_or_pad_time(real, time_steps)
@@ -189,8 +194,26 @@ class Widar3CrossSubject(Dataset):
         self.num_classes = num_classes
         self.cache_path = Path(cache_path) if cache_path else None
 
+        # Cache stores the constructor args alongside (x, y) so a cache built
+        # for one split / time_steps / num_classes can't silently feed a
+        # different one. Mismatch raises rather than re-parsing in place,
+        # because the right fix is to use a different cache_path.
+        cache_meta = {
+            "train": self.train,
+            "test_subjects": sorted(self.test_subjects),
+            "time_steps": self.time_steps,
+            "num_classes": self.num_classes,
+        }
+
         if self.cache_path is not None and self.cache_path.exists():
             blob = torch.load(self.cache_path, weights_only=False)
+            cached_meta = blob.get("meta", {})
+            if cached_meta != cache_meta:
+                raise ValueError(
+                    f"cache at {self.cache_path} was built with {cached_meta!r} "
+                    f"but loader requested {cache_meta!r}; pass a different "
+                    "cache_path or delete the existing one"
+                )
             self._x = blob["x"]
             self._y = blob["y"]
             return
@@ -222,7 +245,10 @@ class Widar3CrossSubject(Dataset):
 
         if self.cache_path is not None:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-            torch.save({"x": self._x, "y": self._y}, self.cache_path)
+            torch.save(
+                {"x": self._x, "y": self._y, "meta": cache_meta},
+                self.cache_path,
+            )
 
     def __len__(self) -> int:
         return self._x.shape[0]
