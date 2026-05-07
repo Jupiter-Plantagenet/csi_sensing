@@ -58,7 +58,17 @@ pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
 ## Status
 
 - [x] T1.7 — paper draft compiles cleanly, 2 pages, all citations resolved.
-- [ ] T1.8 — references verified one-by-one, result numbers substituted,
-      submission portal upload checklist (`papers/kics-george/SUBMISSION.md`,
-      gitignored) drafted, submission staged for George's manual portal
-      upload.
+- [x] T1.8 (partial) — references opened and verified one-by-one against
+      the published record; `papers/kics-george/refs.bib` corrected where
+      it diverged from reality (AutoFi: 7→5 authors, added vol/no/pages;
+      CAPC: full author list; Xu et al.: full author list).
+      `papers/kics-george/SUBMISSION.md` drafted (local-only checklist
+      with portal URL placeholder, deadline notes, per-reference
+      verification status, and the manual upload steps George runs).
+- [ ] T1.8 (data-blocked) — substitute placeholder result numbers in
+      Table I and the abstract once T1.6's multi-seed run produces them
+      (issue #35 is the upstream gate).
+- [ ] T1.8 (final) — write the discussion paragraph and conclusion's
+      closing sentence depending on whether the result clears the
+      convention rule. Drop "Towards" from the title if positive;
+      switch to a "Negative Result" framing if not.
