@@ -36,7 +36,12 @@ def main(seed: int = 42, epochs: int = 2, batch_size: int = 4) -> float:
     train_ds = StubCSI(num_samples=10, seed=seed + 1)
     test_ds = StubCSI(num_samples=10, seed=seed + 2)
 
-    pretrain_loader = DataLoader(pretrain_ds, batch_size=batch_size, shuffle=True)
+    # drop_last=True avoids singleton SimCLR batches: a B=1 batch makes
+    # NT-Xent collapse to zero loss after diagonal masking, contributing
+    # no contrastive gradient and skewing the reported epoch mean.
+    pretrain_loader = DataLoader(
+        pretrain_ds, batch_size=batch_size, shuffle=True, drop_last=True
+    )
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
