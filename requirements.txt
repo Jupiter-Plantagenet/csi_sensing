@@ -5,6 +5,8 @@
 torch
 numpy
 scikit-learn
+matplotlib
+csiread
 
 # Test runner
 pytest
