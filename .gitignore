@@ -37,3 +37,9 @@ data/
 *.ckpt
 *.pt
 wandb/
+
+# George's KICS paper artefacts (personal academic output, not project-tracked).
+# The slice's engineering work — code, tests, results dirs, figure scripts,
+# and the status pointer at `papers/team/george-kics-status.md` — stays
+# tracked. The paper itself (`.tex/.pdf/.bib/figures/`) lives only locally.
+papers/kics-george/
