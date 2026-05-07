@@ -70,3 +70,55 @@ def test_csi_complex_to_real_uses_magnitude():
     out = csi_complex_to_real(z)
     assert out.dtype == torch.float32
     assert torch.allclose(out, torch.tensor([[[5.0]]]))
+
+
+def test_widar3_cache_rejects_mismatched_metadata(tmp_path):
+    """If a cache file exists but was built with different split metadata,
+    the loader must refuse to load it instead of silently feeding the wrong
+    tensors. Avoids cross-split data leaks (codex P2)."""
+    from src.slices.george.data import Widar3CrossSubject
+
+    cache_path = tmp_path / "cache.pt"
+    torch.save(
+        {
+            "x": torch.zeros(2, 4, 30, 3),
+            "y": torch.zeros(2, dtype=torch.long),
+            "meta": {
+                "train": True,
+                "test_subjects": [1, 2, 3, 4],
+                "time_steps": 4,
+                "num_classes": 6,
+            },
+        },
+        cache_path,
+    )
+
+    # Same metadata: loads fine.
+    ds = Widar3CrossSubject(
+        root=tmp_path,
+        train=True,
+        time_steps=4,
+        num_classes=6,
+        cache_path=cache_path,
+    )
+    assert len(ds) == 2
+
+    # Different `train` flag: must raise.
+    with pytest.raises(ValueError, match="cache at"):
+        Widar3CrossSubject(
+            root=tmp_path,
+            train=False,
+            time_steps=4,
+            num_classes=6,
+            cache_path=cache_path,
+        )
+
+    # Different time_steps: must also raise.
+    with pytest.raises(ValueError, match="cache at"):
+        Widar3CrossSubject(
+            root=tmp_path,
+            train=True,
+            time_steps=8,
+            num_classes=6,
+            cache_path=cache_path,
+        )
