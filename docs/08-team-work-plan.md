@@ -64,6 +64,8 @@ The team's final paper (covering all six slices) is project-closeout work that G
 
 **Target venue.** KICS Fall 2026 (deadline ~September 2026). KICS Winter 2027 is the backup.
 
+**AFK execution plan.** [`docs/slice-1-afk-plan.md`](slice-1-afk-plan.md) is the detailed plan for an autonomous Claude session to execute Slice 1 end-to-end while George is away. Includes environment setup, compute strategy, dataset fallbacks, IEEEtran boilerplate, and explicit STOP points. Only relevant if running the slice AFK; teammates writing other slices should skip it.
+
 ### KICS paper outline (calibrated against George's prior KICS Winter 2026 paper)
 
 **Working title.** *Towards Physics-Informed Augmentation for Cross-Subject WiFi CSI Sensing: Doppler-Aware Time Warping in Self-Supervised Pre-Training.* (Drop "Towards" if results are strong.)
