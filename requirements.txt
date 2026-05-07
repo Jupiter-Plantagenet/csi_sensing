@@ -1,11 +1,13 @@
 # Project dependencies. Add packages here as we need them, one per line.
 # Pin versions only when a specific version matters; otherwise leave unpinned.
-#
-# Examples (uncomment when actually used):
-# torch
-# numpy
-# scipy
-# pyyaml
+
+# Runtime (Slice 1 — George)
+torch
+numpy
+scikit-learn
+
+# Test runner
+pytest
 
 # Dev tools (used by CI and recommended locally)
 black
