@@ -1,12 +1,19 @@
 # Project dependencies. Add packages here as we need them, one per line.
 # Pin versions only when a specific version matters; otherwise leave unpinned.
 
+<<<<<<< HEAD
 # Runtime (Slice 3 — Collins)
 torch
 numpy
 scipy            # used by tests/slices/collins/test_profile.py for KS test
 scikit-learn
 csiread          # parses Intel 5300 .dat files (Widar3.0)
+=======
+# Runtime (Slice 1 — George)
+torch
+numpy
+scikit-learn
+>>>>>>> e6da1a3 (T1.1: Scaffold Slice 1 SimCLR pipeline with stub data)
 
 # Test runner
 pytest
