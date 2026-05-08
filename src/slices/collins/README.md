@@ -23,14 +23,10 @@ chipset transfer — the slice's headline causal claim.
 | `ssl.py` | SimCLR wrapper, projection head, NT-Xent loss, pre-training loop. |
 | `eval.py` | Linear-probe evaluation on a frozen encoder (sklearn LogisticRegression). |
 | `data.py` | `StubCSI` (T3.1) and `Widar3CrossSubject` (T3.2). |
+| `phase_profile.py` | T3.3 — per-subcarrier Gaussian fit on phase residuals. |
+| `augmentations.py` | T3.5 — generic baseline + phase-noise injection. |
+| `compare.py` | T3.6 / T3.7 — single- or multi-seed paired comparison driver. |
 | `run.py` | End-to-end entrypoint that wires the pieces together. |
-
-Future siblings (one per upcoming tracer bullet):
-
-| File | Lands in |
-|---|---|
-| `phase_profile.py` | T3.3 (#52) — per-subcarrier Gaussian fit on phase residuals. |
-| `augmentations.py` | T3.5 (#54) — generic baseline + phase-noise injection. |
 
 ## Run
 
@@ -82,6 +78,24 @@ description for the full numbers.
 
 ## Status
 
-- T3.1 — scaffold + SimCLR end-to-end with stub data — implemented in PR #93.
-- T3.2 — real Widar3.0 cross-subject loader + above-chance smoke — this PR.
-- T3.3 onward — see issues #52–#57.
+All eight Stage A tracer bullets landed:
+
+| Step | What | PR |
+|---|---|---|
+| T3.1 | Scaffold + SimCLR end-to-end with stub data | #93 |
+| T3.2 | Real Widar3.0 cross-subject loader (csiread + real-imag stack) | #94 |
+| T3.3 | Per-subcarrier phase-noise profile fit | #95 |
+| T3.4 | Profile sanity test (KS against synthetic Gaussian) | #96 |
+| T3.5 | Phase-noise injection augmentation | #98 |
+| T3.6 | Single-seed paired comparison | #99 |
+| T3.7 | Three-seed paired comparison + docs/07 §2 verdict | #100 |
+| T3.8 | 1-page writeup at `papers/team/phase-noise.md` | this PR |
+
+**Stage A headline: null cross-subject result (delta −0.03 ± 0.76 pp across 3
+seeds), consistent with the augmentation's intended target being
+cross-chipset shift.** See [`papers/team/phase-noise.md`](../../../papers/team/phase-noise.md)
+for the slice writeup.
+
+**Stage B (cross-chipset on CSI-Bench) is filed as follow-up child issues**
+once the dataset is downloaded; the slice's actual causal claim can only be
+tested in that setup.
