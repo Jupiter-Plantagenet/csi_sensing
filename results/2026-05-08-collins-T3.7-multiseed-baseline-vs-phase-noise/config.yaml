@@ -1,0 +1,9 @@
+common:
+  epochs: 20
+  batch_size: 64
+  data_root: 'data/widar3/extracted'
+  cache_dir: 'data/widar3/cache'
+  max_files: 8000
+seeds: [42, 43, 44]
+phase_profile: 'data/widar3/cache/phase_profile.npz'
+results_dir: 'results/2026-05-08-collins-T3.7-multiseed-baseline-vs-phase-noise'

@@ -1,0 +1,319 @@
+{
+  "slice": "collins-T3.7",
+  "comparison": "phase_noise vs generic_baseline",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "per_seed": [
+    {
+      "seed": 42,
+      "baseline": {
+        "tag": "T3.2-widar3",
+        "augment": "generic_baseline",
+        "accuracy": 0.171,
+        "pretrain_losses": [
+          3.110089,
+          2.978806,
+          2.963544,
+          2.955831,
+          2.951838,
+          2.945991,
+          2.944325,
+          2.940569,
+          2.940127,
+          2.939543,
+          2.937184,
+          2.935856,
+          2.934678,
+          2.93544,
+          2.932881,
+          2.933052,
+          2.932509,
+          2.931512,
+          2.930096,
+          2.929377
+        ],
+        "encoder_in_channels": 180,
+        "encoder_params": 48672,
+        "dataset_sizes": {
+          "pretrain": 8000,
+          "train": 8000,
+          "test": 8000
+        },
+        "config": {
+          "seed": 42,
+          "epochs": 20,
+          "batch_size": 64,
+          "data_root": "data/widar3/extracted",
+          "cache_dir": "data/widar3/cache",
+          "max_files": 8000,
+          "phase_profile": null,
+          "device": "cpu"
+        }
+      },
+      "phase_noise": {
+        "tag": "T3.5-widar3-phase-noise",
+        "augment": "phase_noise",
+        "accuracy": 0.162,
+        "pretrain_losses": [
+          3.37914,
+          3.039312,
+          3.00981,
+          2.991922,
+          2.983344,
+          2.970803,
+          2.97031,
+          2.966589,
+          2.962999,
+          2.961104,
+          2.956333,
+          2.955533,
+          2.954248,
+          2.95255,
+          2.95159,
+          2.949752,
+          2.949978,
+          2.946391,
+          2.947085,
+          2.944854
+        ],
+        "encoder_in_channels": 180,
+        "encoder_params": 48672,
+        "dataset_sizes": {
+          "pretrain": 8000,
+          "train": 8000,
+          "test": 8000
+        },
+        "config": {
+          "seed": 42,
+          "epochs": 20,
+          "batch_size": 64,
+          "data_root": "data/widar3/extracted",
+          "cache_dir": "data/widar3/cache",
+          "max_files": 8000,
+          "phase_profile": "data/widar3/cache/phase_profile.npz",
+          "device": "cpu"
+        }
+      },
+      "delta_accuracy_pp": -0.9
+    },
+    {
+      "seed": 43,
+      "baseline": {
+        "tag": "T3.2-widar3",
+        "augment": "generic_baseline",
+        "accuracy": 0.177375,
+        "pretrain_losses": [
+          3.126387,
+          2.977213,
+          2.962493,
+          2.954907,
+          2.9505,
+          2.946644,
+          2.945206,
+          2.943196,
+          2.940562,
+          2.937395,
+          2.935957,
+          2.937036,
+          2.935357,
+          2.934708,
+          2.933729,
+          2.932205,
+          2.934971,
+          2.933164,
+          2.933008,
+          2.931537
+        ],
+        "encoder_in_channels": 180,
+        "encoder_params": 48672,
+        "dataset_sizes": {
+          "pretrain": 8000,
+          "train": 8000,
+          "test": 8000
+        },
+        "config": {
+          "seed": 43,
+          "epochs": 20,
+          "batch_size": 64,
+          "data_root": "data/widar3/extracted",
+          "cache_dir": "data/widar3/cache",
+          "max_files": 8000,
+          "phase_profile": null,
+          "device": "cpu"
+        }
+      },
+      "phase_noise": {
+        "tag": "T3.5-widar3-phase-noise",
+        "augment": "phase_noise",
+        "accuracy": 0.18,
+        "pretrain_losses": [
+          3.381591,
+          3.054649,
+          3.013114,
+          2.999805,
+          2.986921,
+          2.97925,
+          2.972262,
+          2.968263,
+          2.964321,
+          2.962768,
+          2.958553,
+          2.956821,
+          2.958358,
+          2.954372,
+          2.95281,
+          2.952788,
+          2.950726,
+          2.948823,
+          2.94889,
+          2.949465
+        ],
+        "encoder_in_channels": 180,
+        "encoder_params": 48672,
+        "dataset_sizes": {
+          "pretrain": 8000,
+          "train": 8000,
+          "test": 8000
+        },
+        "config": {
+          "seed": 43,
+          "epochs": 20,
+          "batch_size": 64,
+          "data_root": "data/widar3/extracted",
+          "cache_dir": "data/widar3/cache",
+          "max_files": 8000,
+          "phase_profile": "data/widar3/cache/phase_profile.npz",
+          "device": "cpu"
+        }
+      },
+      "delta_accuracy_pp": 0.2625
+    },
+    {
+      "seed": 44,
+      "baseline": {
+        "tag": "T3.2-widar3",
+        "augment": "generic_baseline",
+        "accuracy": 0.164625,
+        "pretrain_losses": [
+          3.126544,
+          2.97685,
+          2.963322,
+          2.956979,
+          2.953511,
+          2.946172,
+          2.943161,
+          2.942191,
+          2.940463,
+          2.93816,
+          2.937328,
+          2.936037,
+          2.934103,
+          2.934979,
+          2.932639,
+          2.931787,
+          2.931798,
+          2.931367,
+          2.93265,
+          2.929276
+        ],
+        "encoder_in_channels": 180,
+        "encoder_params": 48672,
+        "dataset_sizes": {
+          "pretrain": 8000,
+          "train": 8000,
+          "test": 8000
+        },
+        "config": {
+          "seed": 44,
+          "epochs": 20,
+          "batch_size": 64,
+          "data_root": "data/widar3/extracted",
+          "cache_dir": "data/widar3/cache",
+          "max_files": 8000,
+          "phase_profile": null,
+          "device": "cpu"
+        }
+      },
+      "phase_noise": {
+        "tag": "T3.5-widar3-phase-noise",
+        "augment": "phase_noise",
+        "accuracy": 0.17,
+        "pretrain_losses": [
+          3.459041,
+          3.078447,
+          3.030615,
+          3.005716,
+          2.998055,
+          2.985095,
+          2.980688,
+          2.973861,
+          2.972404,
+          2.966813,
+          2.964512,
+          2.963735,
+          2.959643,
+          2.958683,
+          2.957338,
+          2.956261,
+          2.954184,
+          2.951268,
+          2.951237,
+          2.949911
+        ],
+        "encoder_in_channels": 180,
+        "encoder_params": 48672,
+        "dataset_sizes": {
+          "pretrain": 8000,
+          "train": 8000,
+          "test": 8000
+        },
+        "config": {
+          "seed": 44,
+          "epochs": 20,
+          "batch_size": 64,
+          "data_root": "data/widar3/extracted",
+          "cache_dir": "data/widar3/cache",
+          "max_files": 8000,
+          "phase_profile": "data/widar3/cache/phase_profile.npz",
+          "device": "cpu"
+        }
+      },
+      "delta_accuracy_pp": 0.5375
+    }
+  ],
+  "aggregate": {
+    "n_seeds": 3,
+    "baseline": {
+      "accuracies": [
+        0.171,
+        0.177375,
+        0.164625
+      ],
+      "mean": 0.171,
+      "std": 0.006375
+    },
+    "phase_noise": {
+      "accuracies": [
+        0.162,
+        0.18,
+        0.17
+      ],
+      "mean": 0.170667,
+      "std": 0.009018
+    },
+    "delta_pp": {
+      "per_seed": [
+        -0.9,
+        0.2625,
+        0.5375
+      ],
+      "mean": -0.0333,
+      "std": 0.763
+    },
+    "decision_rule": "phase_mean > baseline_mean + 1*baseline_std AND delta_mean > 0 (requires >= 3 seeds)",
+    "real_improvement_per_doc07": false
+  }
+}
