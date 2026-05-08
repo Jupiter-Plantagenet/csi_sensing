@@ -17,44 +17,17 @@ from __future__ import annotations
 
 import argparse
 import random
-from typing import Callable, Optional
+from typing import Optional
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from .augmentations import AugmentFn, make_generic_aug, make_phase_noise_aug
 from .data import NUM_CLASSES, StubCSI, Widar3CrossSubject
 from .encoder import TinyCNN, count_parameters
 from .eval import linear_probe
 from .ssl import SimCLR, pretrain_simclr
-
-
-def make_generic_aug(
-    sigma: float = 0.3,
-    subcarrier_drop_prob: float = 0.15,
-) -> Callable[[torch.Tensor], torch.Tensor]:
-    """Gaussian noise + random subcarrier dropout for SimCLR view generation.
-
-    SimCLR with `augment_fn=None` produces identical views, which collapses
-    the contrastive task to a trivial solution and leaves the encoder with
-    nothing to learn. This stopgap matches the "generic baseline" augmentation
-    in docs/03 (Gaussian noise + random subcarrier mask) so T3.6 can simply
-    reuse it as the baseline once the phase-noise augmentation lands in T3.5.
-
-    Input expected shape: (B, T, S, A) real-valued (z-scored CSI).
-    """
-
-    def _aug(x: torch.Tensor) -> torch.Tensor:
-        x = x + torch.randn_like(x) * sigma
-        if subcarrier_drop_prob > 0.0:
-            b, _t, s, _a = x.shape
-            keep = (torch.rand(b, 1, s, 1, device=x.device) > subcarrier_drop_prob).to(
-                x.dtype
-            )
-            x = x * keep
-        return x
-
-    return _aug
 
 
 def set_seed(seed: int) -> None:
@@ -81,11 +54,12 @@ def main(
     data_root: str | None = None,
     cache_dir: str | None = None,
     max_files: int | None = None,
+    phase_profile: str | None = None,
 ) -> float:
     set_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    augment_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None
+    augment_fn: Optional[AugmentFn] = None
 
     if data_root is None:
         tag = "T3.1-stub"
@@ -93,7 +67,6 @@ def main(
         train_ds: Dataset = StubCSI(num_samples=16, seed=seed + 1)
         test_ds: Dataset = StubCSI(num_samples=16, seed=seed + 2)
     else:
-        tag = "T3.2-widar3"
         pretrain_ds = Widar3CrossSubject(
             data_root,
             train=True,
@@ -112,9 +85,15 @@ def main(
             cache_dir=cache_dir,
             max_files=max_files,
         )
-        # Stopgap augmentation so SimCLR has a non-trivial task; replaced by
-        # the calibrated phase-noise augmentation in T3.5.
-        augment_fn = make_generic_aug(sigma=0.3, subcarrier_drop_prob=0.15)
+        # Augmentation choice: phase-noise (T3.5) when a profile is provided,
+        # otherwise the generic baseline (T3.6's baseline). Both factories live
+        # in augmentations.py; we just hand SimCLR the resulting callable.
+        if phase_profile is not None:
+            tag = "T3.5-widar3-phase-noise"
+            augment_fn = make_phase_noise_aug(phase_profile)
+        else:
+            tag = "T3.2-widar3"
+            augment_fn = make_generic_aug(sigma=0.3, subcarrier_drop_prob=0.15)
         print(
             f"[{tag}] dataset sizes: pretrain={len(pretrain_ds)}, "
             f"train={len(train_ds)}, test={len(test_ds)}"
@@ -182,6 +161,13 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="cap the number of .dat files used in train and test (debug).",
     )
+    p.add_argument(
+        "--phase-profile",
+        type=str,
+        default=None,
+        help="path to a T3.3 phase_profile.npz; when set, replaces the "
+        "generic baseline aug with calibrated phase-noise injection (T3.5).",
+    )
     return p.parse_args()
 
 
@@ -194,4 +180,5 @@ if __name__ == "__main__":
         data_root=args.data_root,
         cache_dir=args.cache_dir,
         max_files=args.max_files,
+        phase_profile=args.phase_profile,
     )
