@@ -30,8 +30,20 @@ Thumbs.db
 
 # Project-specific: large data and trained weights do not belong in git
 data/
-results/
 *.pth
 *.ckpt
 *.pt
 wandb/
+
+# results/ contents are ignored by default (model checkpoints, training logs,
+# plots can be heavy). The four small per-experiment artifact files mandated
+# by docs/04 §7 / docs/07 — config.yaml, git_hash.txt, metrics.json, notes.md
+# — are explicitly un-ignored so they end up tracked alongside the code that
+# produced them.
+results/**
+!results/
+!results/*/
+!results/*/config.yaml
+!results/*/git_hash.txt
+!results/*/metrics.json
+!results/*/notes.md

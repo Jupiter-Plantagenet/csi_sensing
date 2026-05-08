@@ -55,11 +55,16 @@ def main(
     cache_dir: str | None = None,
     max_files: int | None = None,
     phase_profile: str | None = None,
-) -> float:
+) -> dict:
+    """Run one full pipeline (pre-train + linear probe). Returns a dict with
+    accuracy, loss curve, and the resolved config — `compare.py` (T3.6) reads
+    this directly to log a paired comparison.
+    """
     set_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     augment_fn: Optional[AugmentFn] = None
+    augment_name: str = "none"
 
     if data_root is None:
         tag = "T3.1-stub"
@@ -91,9 +96,11 @@ def main(
         if phase_profile is not None:
             tag = "T3.5-widar3-phase-noise"
             augment_fn = make_phase_noise_aug(phase_profile)
+            augment_name = "phase_noise"
         else:
             tag = "T3.2-widar3"
             augment_fn = make_generic_aug(sigma=0.3, subcarrier_drop_prob=0.15)
+            augment_name = "generic_baseline"
         print(
             f"[{tag}] dataset sizes: pretrain={len(pretrain_ds)}, "
             f"train={len(train_ds)}, test={len(test_ds)}"
@@ -110,10 +117,8 @@ def main(
 
     in_channels = _infer_in_channels(pretrain_ds)
     encoder = TinyCNN(in_channels=in_channels, feature_dim=128)
-    print(
-        f"[{tag}] encoder in_channels={in_channels}, "
-        f"params={count_parameters(encoder)}"
-    )
+    encoder_params = count_parameters(encoder)
+    print(f"[{tag}] encoder in_channels={in_channels}, params={encoder_params}")
 
     model = SimCLR(encoder, feature_dim=128, projection_dim=64)
     losses = pretrain_simclr(
@@ -134,7 +139,30 @@ def main(
         f"[{tag}] linear-probe accuracy: {acc:.3f} "
         f"(chance ~ {1.0 / NUM_CLASSES:.3f})"
     )
-    return acc
+
+    return {
+        "tag": tag,
+        "augment": augment_name,
+        "accuracy": acc,
+        "pretrain_losses": [float(round(loss, 6)) for loss in losses],
+        "encoder_in_channels": int(in_channels),
+        "encoder_params": int(encoder_params),
+        "dataset_sizes": {
+            "pretrain": len(pretrain_ds),
+            "train": len(train_ds),
+            "test": len(test_ds),
+        },
+        "config": {
+            "seed": seed,
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "data_root": data_root,
+            "cache_dir": cache_dir,
+            "max_files": max_files,
+            "phase_profile": phase_profile,
+            "device": device,
+        },
+    }
 
 
 def _parse_args() -> argparse.Namespace:
