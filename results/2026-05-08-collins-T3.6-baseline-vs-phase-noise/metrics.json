@@ -1,0 +1,95 @@
+{
+  "slice": "collins-T3.6",
+  "comparison": "phase_noise vs generic_baseline",
+  "seed": 42,
+  "single_seed_caveat": "single-seed result \u2014 paired multi-seed comparison comes in T3.7. Per docs/07 \u00a72 the 'real improvement' rule is multi-seed only.",
+  "baseline": {
+    "tag": "T3.2-widar3",
+    "augment": "generic_baseline",
+    "accuracy": 0.171,
+    "pretrain_losses": [
+      3.110089,
+      2.978806,
+      2.963544,
+      2.955831,
+      2.951838,
+      2.945991,
+      2.944325,
+      2.940569,
+      2.940127,
+      2.939543,
+      2.937184,
+      2.935856,
+      2.934678,
+      2.93544,
+      2.932881,
+      2.933052,
+      2.932509,
+      2.931512,
+      2.930096,
+      2.929377
+    ],
+    "encoder_in_channels": 180,
+    "encoder_params": 48672,
+    "dataset_sizes": {
+      "pretrain": 8000,
+      "train": 8000,
+      "test": 8000
+    },
+    "config": {
+      "seed": 42,
+      "epochs": 20,
+      "batch_size": 64,
+      "data_root": "data/widar3/extracted",
+      "cache_dir": "data/widar3/cache",
+      "max_files": 8000,
+      "phase_profile": null,
+      "device": "cpu"
+    }
+  },
+  "phase_noise": {
+    "tag": "T3.5-widar3-phase-noise",
+    "augment": "phase_noise",
+    "accuracy": 0.162,
+    "pretrain_losses": [
+      3.37914,
+      3.039312,
+      3.00981,
+      2.991922,
+      2.983344,
+      2.970803,
+      2.97031,
+      2.966589,
+      2.962999,
+      2.961104,
+      2.956333,
+      2.955533,
+      2.954248,
+      2.95255,
+      2.95159,
+      2.949752,
+      2.949978,
+      2.946391,
+      2.947085,
+      2.944854
+    ],
+    "encoder_in_channels": 180,
+    "encoder_params": 48672,
+    "dataset_sizes": {
+      "pretrain": 8000,
+      "train": 8000,
+      "test": 8000
+    },
+    "config": {
+      "seed": 42,
+      "epochs": 20,
+      "batch_size": 64,
+      "data_root": "data/widar3/extracted",
+      "cache_dir": "data/widar3/cache",
+      "max_files": 8000,
+      "phase_profile": "data/widar3/cache/phase_profile.npz",
+      "device": "cpu"
+    }
+  },
+  "delta_accuracy_pp": -0.9
+}
