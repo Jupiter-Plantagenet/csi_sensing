@@ -1,11 +1,14 @@
 # Project dependencies. Add packages here as we need them, one per line.
 # Pin versions only when a specific version matters; otherwise leave unpinned.
-#
-# Examples (uncomment when actually used):
-# torch
-# numpy
-# scipy
-# pyyaml
+
+# Runtime (Slice 3 — Collins)
+torch
+numpy
+scikit-learn
+csiread          # parses Intel 5300 .dat files (Widar3.0)
+
+# Test runner
+pytest
 
 # Dev tools (used by CI and recommended locally)
 black
