@@ -16,10 +16,16 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from .augmentations import doppler_warp
 from .data import CSI_A, CSI_S, NUM_CLASSES, StubCSI
 from .encoder import TinyCNN, count_parameters
 from .eval import linear_probe
 from .ssl import SimCLR, pretrain_simclr
+
+AUGMENTATIONS = {
+    "none": None,
+    "doppler": doppler_warp,
+}
 
 
 def set_seed(seed: int) -> None:
@@ -28,7 +34,16 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
 
 
-def main(seed: int = 42, epochs: int = 2, batch_size: int = 4) -> float:
+def main(
+    seed: int = 42,
+    epochs: int = 2,
+    batch_size: int = 4,
+    aug: str = "none",
+) -> float:
+    if aug not in AUGMENTATIONS:
+        raise ValueError(
+            f"unknown augmentation {aug!r}; pick from {sorted(AUGMENTATIONS)}"
+        )
     set_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -49,16 +64,17 @@ def main(seed: int = 42, epochs: int = 2, batch_size: int = 4) -> float:
     print(f"[T1.1] encoder params: {count_parameters(encoder)}")
 
     model = SimCLR(encoder, feature_dim=128, projection_dim=64)
+    augment_fn = AUGMENTATIONS[aug]
     losses = pretrain_simclr(
         model,
         pretrain_loader,
         epochs=epochs,
         lr=1e-3,
         temperature=0.5,
-        augment_fn=None,
+        augment_fn=augment_fn,
         device=device,
     )
-    print(f"[T1.1] pre-train losses: {[round(loss, 4) for loss in losses]}")
+    print(f"[T1.1] aug={aug!r} pre-train losses: {[round(loss, 4) for loss in losses]}")
 
     acc = linear_probe(
         model.encoder, train_loader, test_loader, device=device, seed=seed
@@ -74,9 +90,15 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--epochs", type=int, default=2)
     p.add_argument("--batch-size", type=int, default=4)
+    p.add_argument("--aug", choices=sorted(AUGMENTATIONS), default="none")
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
-    main(seed=args.seed, epochs=args.epochs, batch_size=args.batch_size)
+    main(
+        seed=args.seed,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        aug=args.aug,
+    )
