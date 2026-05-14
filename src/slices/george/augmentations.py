@@ -76,3 +76,51 @@ def doppler_warp(
     raise ValueError(
         f"doppler_warp expects (T, S, A) or (B, T, S, A); got {tuple(x.shape)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# T1.3 generic-baseline augmentations
+# Gaussian noise and random subcarrier masking are the SimCLR baseline pair
+# the Doppler comparison runs against. They're cheap and content-agnostic;
+# their job is to be the "doesn't know about CSI physics" control.
+
+
+def gaussian_noise(x: torch.Tensor, sigma: float = 0.05) -> torch.Tensor:
+    """Additive Gaussian noise on every CSI element.
+
+    `sigma` is in the same units as the input — pick it to be small relative
+    to the typical CSI magnitude after whatever normalisation T1.2 applies.
+    """
+    return x + torch.randn_like(x) * sigma
+
+
+def random_subcarrier_mask(x: torch.Tensor, p: float = 0.15) -> torch.Tensor:
+    """Zero out a random fraction `p` of subcarriers per sample.
+
+    Operates on `(T, S, A)` or `(B, T, S, A)`. In the batched path each
+    sample gets its own independent mask so two calls produce two views
+    with different masked-out subcarriers — usable as a SimCLR view-pair
+    augmentation on its own or paired with `gaussian_noise`.
+    """
+    if x.ndim == 3:
+        s = x.shape[1]
+        keep = torch.rand(s, device=x.device) >= p
+        return x * keep.view(1, s, 1).to(x.dtype)
+    if x.ndim == 4:
+        b, _, s, _ = x.shape
+        keep = torch.rand(b, s, device=x.device) >= p
+        return x * keep.view(b, 1, s, 1).to(x.dtype)
+    raise ValueError(
+        f"random_subcarrier_mask expects (T, S, A) or (B, T, S, A); got {tuple(x.shape)}"
+    )
+
+
+def gaussian_then_mask(
+    x: torch.Tensor, sigma: float = 0.05, p: float = 0.15
+) -> torch.Tensor:
+    """T1.3 default view augmentation: Gaussian noise then subcarrier mask.
+
+    Used symmetrically (both views call this) to produce the generic
+    baseline that the Doppler-aware augmentation is compared against.
+    """
+    return random_subcarrier_mask(gaussian_noise(x, sigma=sigma), p=p)
