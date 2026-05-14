@@ -1,11 +1,12 @@
 # Project dependencies. Add packages here as we need them, one per line.
 # Pin versions only when a specific version matters; otherwise leave unpinned.
 
-# Runtime (Slice 3 — Collins)
+# Runtime — shared across slices
 torch
 numpy
 scipy            # used by tests/slices/collins/test_profile.py for KS test
 scikit-learn
+matplotlib
 csiread          # parses Intel 5300 .dat files (Widar3.0)
 
 # Test runner
