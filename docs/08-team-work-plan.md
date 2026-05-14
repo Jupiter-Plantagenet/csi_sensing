@@ -36,28 +36,34 @@ The cost is some duplication. Two slice owners will each write a Widar3.0 loader
 |---|---|---|---|---|
 | 1 | George Chidera Akor | `Jupiter-Plantagenet` | Doppler-aware time warping | KICS submission |
 | 2 | Chigozie Athanasius Nnadiekwe | `Gozie01` | Static-component perturbation | Cross-environment results + 1-page writeup |
-| 3 | Collins Izuchukwu Okafor | `c0llinx` | Calibrated phase-noise injection | Cross-chipset results + 1-page writeup |
+| 3 | Collins Izuchukwu Okafor | `c0llinx` | Calibrated phase-noise injection | Cross-chipset (or robustness) results + 1-page writeup |
 | 4 | Ihunanya Udodiri Ajakwe | `AjakweIU` | Coherence-aware subcarrier masking | Robustness curve + 1-page writeup |
 | 5 | Josiah Ayoola Isong | `isongjosiah` | Baseline reproduction | Cross-subject baseline table + 1-page writeup |
-| 6 | Victor Ikenna Kanu | `xaviwho` | Composability of two physics-informed augmentations | Interaction-effects table + 1-page writeup |
+| 6 | Victor Ikenna Kanu | `xaviwho` | Composability of Doppler + coherence-aware masking | Interaction-effects table + 1-page writeup |
 
 The team's final paper (covering all six slices) is project-closeout work that George coordinates after slices 1–6 finish. It may become a separate publication later (target venue TBD).
+
+### A note on the data
+
+All slices that consume Widar3.0 operate on **raw Channel State Information** from Intel 5300 NICs (the original `.dat` format). The dataset is being downloaded from IEEE DataPort to `data/widar3/raw/` as 15 archives (one per recording-session date), totalling roughly 80 GB. Each `.dat` file parses via `csiread.Intel(...)` to a complex CSI tensor of shape approximately `(T_packets, 30 subcarriers, 3 antennas)` per receiver. Sampling rate is 1000 packets/sec; a gesture instance lasts ~1–2 s. The 15 dates span the three published Widar3.0 environments (classroom, office, hall), enabling genuine cross-environment evaluation for Slice 2. See [`docs/slice-1-afk-plan.md`](slice-1-afk-plan.md) section 6 for the full layout, including the `userN-G-P-O-T-rR.dat` filename schema and the per-slice subset selection.
+
+**Slice 3 has a remaining data dependency.** Calibrated phase-noise injection across chipsets needs CSI-Bench (a different dataset, hosted on Kaggle), since Widar3.0 records on a single chipset family (Intel 5300). Slice 3 can prototype the augmentation pipeline on Widar3.0 raw CSI now and report a robustness result; the cross-chipset claim itself awaits CSI-Bench access. The slice's tracer-bullets are written to be incrementally upgradable once that data is in hand.
 
 ---
 
 ## 4. Slice 1 — George — Doppler-aware time warping → KICS submission
 
-**Theme.** Stretch the time axis of a CSI sample by a random factor in `[0.7, 1.4]` to simulate the same activity performed at different speeds. Cross-subject is the natural target because subjects vary in gait speed.
+**Theme.** Stretch the time axis of a raw-CSI sample by a random factor in `[0.7, 1.4]` to simulate the same activity performed at different speeds. Cross-subject is the natural target because subjects vary in gait speed.
 
-**Why this slice for KICS.** Lowest-risk augmentation to implement (no decomposition, no calibration, no spectral estimation). Widar3.0 cross-subject is a public benchmark. A clean comparison between Doppler warping and a generic-augmentation baseline produces a 2-page paper with a results table.
+**Why this slice for KICS.** Lowest-risk augmentation to implement (no decomposition, no calibration, no spectral estimation). Widar3.0 cross-subject is a public benchmark with published baselines. A clean comparison between Doppler warping and a generic-augmentation baseline produces a 2-page paper with a results table.
 
 **Tracer-bullet issues:**
 
-1. **T1.1 — Scaffold + SimCLR end-to-end with stub data.** Tiny CNN, SimCLR loss, linear probe, 10 stub samples. Pipeline runs.
-2. **T1.2 — Real Widar3.0 cross-subject loader.** Replace stub. Same code now produces non-trivial accuracy.
+1. **T1.1 — Scaffold + SimCLR end-to-end with stub data.** Tiny CNN, SimCLR loss, linear probe, 10 stub CSI samples shaped `(T, 30, 3)`. Pipeline runs.
+2. **T1.2 — Real Widar3.0 raw-CSI cross-subject loader.** Parse `.dat` files via `csiread`, filter to canonical 6 gestures + position 1 + orientation 1 + receiver 1, build cross-subject user split.
 3. **T1.3 — Generic-augmentation baseline.** Gaussian noise + random subcarrier mask. Single seed.
-4. **T1.4 — Doppler-aware time warping augmentation.** Implement; integrate; single seed.
-5. **T1.5 — Sanity test.** Synthetic CSI with one known frequency; warp factor 2 shifts it by 2× (within tolerance).
+4. **T1.4 — Doppler-aware time warping.** Stretch the time axis by a factor in `[0.7, 1.4]`. Single seed.
+5. **T1.5 — Sanity test.** Synthetic CSI with one known dominant frequency; factor-2 warp halves the dominant frequency (within tolerance).
 6. **T1.6 — Multi-seed comparison.** Three seeds for both baseline and Doppler. Mean ± std. Paired comparison.
 7. **T1.7 — KICS paper draft.** LaTeX/`IEEEtran` two-column draft per the outline below.
 8. **T1.8 — KICS paper polish and submission.** PDF, references, format check, submission.
@@ -78,7 +84,7 @@ The team's final paper (covering all six slices) is project-closeout work that G
 
 **Abstract (~150 words), bottleneck → observation → present → numbers:**
 
-> *Cross-subject generalization is a known weakness of WiFi channel-state-information (CSI) sensing systems, with reported accuracy drops of XX% when test subjects differ from training subjects [cite]. Existing self-supervised learning (SSL) approaches use generic data augmentations borrowed from computer vision, which do not reflect the physical phenomena that drive cross-domain shift. We observe that activity speed scales the Doppler component of CSI approximately linearly, a structure that augmentation design has not previously exploited. We present Doppler-aware time warping, a physics-informed augmentation that stretches the time axis of a CSI sample by a random factor in [0.7, 1.4] during SimCLR pre-training. On the Widar3.0 cross-subject benchmark with a frozen-encoder linear probe, Doppler-aware time warping improves accuracy by X.X ± Y.Y% over a Gaussian-noise + random-mask baseline across three random seeds.*
+> *Cross-subject generalization is a known weakness of WiFi channel-state-information (CSI) sensing systems, with reported accuracy drops when test subjects differ from training subjects. Existing self-supervised learning (SSL) approaches use generic data augmentations borrowed from computer vision, which do not reflect the physical phenomena that drive cross-domain shift. We observe that activity speed scales the Doppler component of CSI approximately linearly, a structure that augmentation design has not previously exploited. We present Doppler-aware time warping, a physics-informed augmentation that stretches the time axis of a raw CSI sample by a random factor in [0.7, 1.4] during SimCLR pre-training. On the Widar3.0 cross-subject benchmark with a frozen-encoder linear probe, Doppler-aware time warping improves accuracy by X.X ± Y.Y% over a Gaussian-noise + random-subcarrier-mask baseline across three random seeds.*
 
 **Sections:**
 
@@ -103,50 +109,53 @@ The team's final paper (covering all six slices) is project-closeout work that G
 
 ## 5. Slice 2 — Chigozie — Static-component perturbation → cross-environment results
 
-**Theme.** Decompose CSI into a static component (room) and dynamic component (person). Replace the static component with one from a different sample to simulate "the same activity in a different room." Cross-environment is the natural target. Highest-risk of the four augmentations because the decomposition is non-trivial.
+**Theme.** Decompose a raw-CSI sample into a **static component** (the slowly-varying contribution from walls, furniture, ceiling — i.e. the room) and a **dynamic component** (the fast-varying contribution from the moving person). Practical default: temporal lowpass filter at 2 Hz. Replace the static component with one from a different sample to simulate "the same activity in a different room." Cross-environment is the natural target. Highest-risk of the four augmentations because the decomposition is non-trivial.
 
 **Tracer-bullet issues:**
 
 1. **T2.1 — Scaffold + SimCLR end-to-end with stub data.**
-2. **T2.2 — Real Widar3.0 cross-environment loader.**
+2. **T2.2 — Real Widar3.0 raw-CSI cross-environment loader.** Build a split where train and test draw from different recording dates corresponding to different rooms (the 15 dates span 3 environments — see Slice-1 AFK plan section 6 for date-to-room mapping verification).
 3. **T2.3 — Static/dynamic decomposition** (default: temporal lowpass at 2 Hz cutoff).
 4. **T2.4 — Decomposition sanity test** (synthetic slow + fast components).
-5. **T2.5 — Static-component perturbation augmentation.** Swap statics across batch.
+5. **T2.5 — Static-component perturbation augmentation.** Swap statics across the batch.
 6. **T2.6 — Generic baseline + static-perturbation comparison, single seed.**
 7. **T2.7 — Multi-seed comparison.**
 8. **T2.8 — Results writeup** at `papers/team/static.md`.
 
 ---
 
-## 6. Slice 3 — Collins — Calibrated phase-noise injection → cross-chipset results
+## 6. Slice 3 — Collins — Calibrated phase-noise injection → cross-chipset (or robustness) results
 
-**Theme.** Different WiFi chips introduce different phase noise. Profile each chip in CSI-Bench, then synthesise "what would this CSI look like on a different chip" by injecting another chip's noise profile.
+**Theme.** Different WiFi chips introduce different phase noise. The full claim — fitting per-chip phase-noise distributions and injecting them across chipsets — requires CSI-Bench (not Widar3.0; Widar3.0 records on Intel 5300 only). The slice has two stages:
 
-**Tracer-bullet issues:**
+- **Stage A (now, on Widar3.0 raw CSI):** fit a single phase-noise model from a held-out training subset of Widar3.0 raw CSI, inject it during SimCLR pre-training, and measure robustness to held-out phase perturbations on cross-subject test. Anchored augmentation but a weaker claim than cross-chipset transfer.
+- **Stage B (when CSI-Bench is downloaded):** refit phase-noise models per chipset (CSI-Bench has 5 chip families), inject across chipsets, and measure cross-chipset transfer accuracy. This is the original cross-chipset claim.
 
-1. **T3.1 — Scaffold + SimCLR end-to-end with stub data.**
-2. **T3.2 — Real CSI-Bench cross-chipset loader.**
-3. **T3.3 — Per-chip phase-noise profiling** (default: Gaussian per subcarrier).
-4. **T3.4 — Profile sanity test** (KS-test "chip A with chip B's injected noise" vs real chip B).
+**Tracer-bullet issues** are written to ship Stage A first; Stage B is added as a follow-up child issue once CSI-Bench is in hand.
+
+1. **T3.1 — Scaffold + SimCLR end-to-end with stub raw-CSI data.**
+2. **T3.2 — Real Widar3.0 raw-CSI cross-subject loader** (CSI-Bench loader filed as a follow-up issue once data arrives).
+3. **T3.3 — Phase-noise model fitting** (default: independent Gaussian per subcarrier on phase residuals after channel-response removal).
+4. **T3.4 — Profile sanity test** (KS-test against held-out perturbation distribution; sub-issue for the full cross-chipset KS-test once CSI-Bench is in hand).
 5. **T3.5 — Phase-noise injection augmentation.**
 6. **T3.6 — Generic baseline + phase-noise comparison, single seed.**
 7. **T3.7 — Multi-seed comparison.**
-8. **T3.8 — Results writeup** at `papers/team/phase-noise.md`.
+8. **T3.8 — Results writeup** at `papers/team/phase-noise.md`. Stage A robustness numbers; Stage B framed as future work pending CSI-Bench.
 
 ---
 
 ## 7. Slice 4 — Ihunanya — Coherence-aware subcarrier masking → robustness results
 
-**Theme.** Mask blocks of contiguous subcarriers whose width matches the channel's coherence bandwidth. The robustness angle: the encoder should learn to ignore coherent blocks of dropped subcarriers, so it should tolerate subcarrier loss at test time.
+**Theme.** Mask blocks of contiguous subcarriers whose width matches the channel's coherence bandwidth, simulating realistic frequency-selective fading. The robustness angle: the encoder should learn to ignore coherent blocks of dropped subcarriers, so it should tolerate subcarrier loss at test time.
 
 **Tracer-bullet issues:**
 
-1. **T4.1 — Scaffold + SimCLR end-to-end with stub data.**
-2. **T4.2 — Real Widar3.0 loader.**
-3. **T4.3 — Coherence-bandwidth estimation** (default: CIR-based delay-spread, B_c ≈ 1/(5·τ)).
-4. **T4.4 — Estimation sanity test** (synthetic two-tap channel).
+1. **T4.1 — Scaffold + SimCLR end-to-end with stub raw-CSI data.**
+2. **T4.2 — Real Widar3.0 raw-CSI loader.** (Cross-subject split is fine for robustness work.)
+3. **T4.3 — Coherence-bandwidth estimation** (default: CIR-based delay-spread, B_c ≈ 1/(5·τ); compute via inverse FFT across subcarriers).
+4. **T4.4 — Estimation sanity test** (synthetic two-tap channel with known delay spread).
 5. **T4.5 — Coherence-aware subcarrier-block masking augmentation.**
-6. **T4.6 — Held-out subcarrier robustness study** (test-time mask-N sweep).
+6. **T4.6 — Held-out subcarrier robustness study** (test-time mask-N sweep over the 30 subcarriers).
 7. **T4.7 — Multi-seed comparison.**
 8. **T4.8 — Results writeup** at `papers/team/coherence.md`.
 
@@ -154,35 +163,35 @@ The team's final paper (covering all six slices) is project-closeout work that G
 
 ## 8. Slice 5 — Josiah — Baseline reproduction → cross-subject comparison table
 
-**Theme.** Reproduce three published or canonical baselines on **Widar3.0 cross-subject** so the team has anchored numbers directly comparable to George's Slice 1.
+**Theme.** Reproduce three published or canonical baselines on **Widar3.0 cross-subject (raw CSI)** so the team has anchored numbers directly comparable to George's Slice 1.
 
 **Tracer-bullet issues:**
 
-1. **T5.1 — Scaffold (supervised, no SSL) on Widar3.0 cross-subject.**
-2. **T5.2 — Supervised baseline produces a published-comparable cross-subject accuracy.**
-3. **T5.3 — Add SimCLR pre-training with trivial augmentation.**
-4. **T5.4 — Reproduce AutoFi headline number on cross-subject.**
-5. **T5.5 — Reproduce CAPC headline number on cross-subject.**
-6. **T5.6 — Reproduce hand-crafted-augmentation baseline on cross-subject** (3 seeds).
+1. **T5.1 — Scaffold (supervised, no SSL) on Widar3.0 raw-CSI cross-subject.**
+2. **T5.2 — Supervised baseline produces a published-comparable cross-subject accuracy.** Within ~5 pp tolerance of a published Widar3.0 cross-subject number.
+3. **T5.3 — Add SimCLR pre-training with trivial augmentation.** SSL pipeline runs.
+4. **T5.4 — Reproduce AutoFi headline number on cross-subject.** Geometric SSL on raw CSI.
+5. **T5.5 — Reproduce CAPC headline number on cross-subject.** CPC + Barlow Twins on raw CSI.
+6. **T5.6 — Reproduce hand-crafted-augmentation baseline on cross-subject** (3 seeds). SimCLR with Gaussian noise + random subcarrier mask, same configuration as George's Slice 1 — directly comparable numbers.
 7. **T5.7 — Multi-seed comparison table** at `papers/team/baselines.md`.
-8. **T5.8 — Gap-analysis writeup.** Identify which (metric × dataset × split) cells are empty across baselines — these are where our work has the most to contribute.
+8. **T5.8 — Gap-analysis writeup.** Identify which (metric × dataset × split) cells are empty across published baselines — these are where the team's work has the most to contribute.
 
 ---
 
-## 9. Slice 6 — Victor — Composability of two physics-informed augmentations
+## 9. Slice 6 — Victor — Composability of Doppler + coherence-aware masking → interaction-effects writeup
 
-**Theme.** Do physics-informed augmentation effects compose linearly? Tested directly using **two of the four physics-informed augmentations**, recommended pair: Doppler-aware time warping + coherence-aware subcarrier masking (orthogonal axes — time and frequency — easiest to reimplement from scratch). Both augmentations are reimplemented in this slice's directory; no dependency on slices 1 or 4.
+**Theme.** Do physics-informed augmentation effects compose linearly? The deck flags "isolating effects" as a difficulty. This slice tests it directly using **Doppler-aware time warping + coherence-aware subcarrier masking** — two of the four physics-informed augmentations, operating on orthogonal axes (time and frequency), both reimplemented in this slice's directory for full independence from slices 1 and 4.
 
 **Tracer-bullet issues:**
 
-1. **T6.1 — Scaffold + SimCLR end-to-end with stub data.**
-2. **T6.2 — Real Widar3.0 cross-subject loader.**
-3. **T6.3 — Implement two physics-informed augmentations from scratch in-slice.** Includes prerequisite coherence-bandwidth estimation. Heaviest issue — budget for it.
+1. **T6.1 — Scaffold + SimCLR end-to-end with stub raw-CSI data.**
+2. **T6.2 — Real Widar3.0 raw-CSI cross-subject loader.**
+3. **T6.3 — Implement Doppler + coherence-aware-masking from scratch in-slice.** Reimplemented here for slice independence. Includes the prerequisite coherence-bandwidth estimation. Heaviest issue — budget for it.
 4. **T6.4 — Single-augmentation runs on cross-subject, single seed each.**
-5. **T6.5 — Combined-augmentation run, single seed.**
+5. **T6.5 — Combined-augmentation run, single seed.** Decide and document the composition strategy: sequential within a view, or one per view.
 6. **T6.6 — Interaction term plot.** Combined effect minus sum of individual effects. Three conditions, one bar chart.
 7. **T6.7 — Multi-seed across all three conditions.**
-8. **T6.8 — Results writeup** at `papers/team/composability.md`. Are physics-informed augmentation effects additive on CSI?
+8. **T6.8 — Results writeup.** Do physics-informed augmentation effects compose linearly on raw CSI? 1-page markdown at `papers/team/composability.md`.
 
 ---
 

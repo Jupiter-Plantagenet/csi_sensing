@@ -4,7 +4,7 @@ This document is for Claude running in a fresh session, working autonomously whi
 
 If you (Claude) are reading this in a new session: the plan is self-contained. Read sections 0–4 first, then execute T1.1–T1.8 in order. The repository's other docs are referenced when needed; you do not need to read them all upfront.
 
-If George (the user) is reviewing this document: the plan is calibrated for "Claude executes autonomously, only pauses at the explicit STOP points." Sanity-check the STOP points (section 9), the compute strategy (section 4), and the negative-result protocol (section 11). Edits welcome.
+If George (the user) is reviewing this document: the plan is calibrated for "Claude executes autonomously, only pauses at the explicit STOP points." Sanity-check the STOP points (section 9), the compute strategy (section 5), and the negative-result protocol (section 10). Edits welcome.
 
 ---
 
@@ -12,7 +12,7 @@ If George (the user) is reviewing this document: the plan is calibrated for "Cla
 
 **You are Claude, in a fresh session, working on the repository at [`https://github.com/Jupiter-Plantagenet/csi_sensing`](https://github.com/Jupiter-Plantagenet/csi_sensing).** The user George (`Jupiter-Plantagenet` on GitHub) has stepped away. You have authenticated `gh` CLI access as George and full write access to the repo.
 
-**Your goal**: complete Slice 1 of the project's six-slice plan. Slice 1 produces a 2-page KICS conference paper on Doppler-aware time warping for cross-subject WiFi CSI sensing. The slice is broken into eight tracer-bullet issues (#34 through #41). You execute them in order, opening one PR per tracer bullet, committing progress as you go.
+**Your goal**: complete Slice 1 of the project's six-slice plan. Slice 1 produces a 2-page KICS conference paper on **Doppler-aware time warping applied to raw WiFi Channel State Information (CSI)** for cross-subject WiFi sensing. The slice is broken into eight tracer-bullet issues. As of the last AFK plan revision, those are issues **#34, #35, #36, #37, #38, #39, #91, #92** — note the gap (T1.7 and T1.8 live at #91 and #92, not the original #40/#41). You execute them in order, opening one PR per tracer bullet, committing progress as you go.
 
 **You stop at the explicit STOP points in section 9.** The most important is: **never click "Merge" on a PR**. George reviews and merges. You also **do not** upload the final paper to the KICS submission portal — that is George's manual step. You produce the submission-ready PDF and stage it; George submits.
 
@@ -34,12 +34,14 @@ Read this carefully — it shapes how every PR you open is structured.
 **Not committed (local-only, gitignored):**
 
 - Everything under `papers/kics-george/`. This includes `main.tex`, `main.pdf`, `refs.bib`, `fig1-pipeline.pdf`, `SUBMISSION.md`, and any other paper-side artifact.
+- Everything under `data/`, including the raw-CSI archives and any extracted `.dat` files.
+- The `.env` file at the repo root (contains the IEEE DataPort AWS credentials; never touch in a way that could log it to chat or commit it).
 
-The reason: the slice's *engineering work* is project-tracked so teammates can review and reuse it. The *paper itself* is George's personal academic output, kept out of the project's git history. The paper still gets produced — it just lives locally on whichever machine the AFK session ran on.
+The reason for the paper carve-out: the slice's *engineering work* is project-tracked so teammates can review and reuse it. The *paper itself* is George's personal academic output, kept out of the project's git history. The paper still gets produced — it just lives locally on whichever machine the AFK session ran on.
 
 **Implication for your PRs.** Each tracer-bullet PR commits only project-tracked artifacts. T1.7 and T1.8 are the unusual case: the paper itself (the .tex/.pdf/.bib) does not appear in the diff. Those PRs commit the figure script, the results, and an updated `papers/team/george-kics-status.md`. The paper's existence is referenced in the PR description with the local path; the actual files do not get pushed.
 
-**One-machine implication.** Because paper artifacts live locally and are not in git, the AFK session must run on a machine where the paper files persist. If you need to resume on a different machine, regenerate the paper from the project-tracked figure scripts and results, and re-run the LaTeX compilation. There is no automatic sync — that is George's problem to solve (e.g., Drive sync) if he wants cross-machine continuity.
+**One-machine implication.** Because paper artifacts and raw data live locally and are not in git, the AFK session must run on the same machine throughout — currently George's Windows workstation at `c:/Users/user/CascadeProjects/csi_sensing`. The dataset is already on disk (or downloading in the background); you do not need to redownload.
 
 ---
 
@@ -52,7 +54,7 @@ Read these in order. Stop after each, do not switch tabs:
 3. [`docs/07-experiment-scaffold.md`](07-experiment-scaffold.md) — encoder, SSL, eval defaults you must follow.
 4. [`docs/06-using-ai-well.md`](06-using-ai-well.md) — when *you* run AI-flavoured operations on yourself (web search, paper summarisation), follow this.
 5. [`docs/04-github-workflow.md`](04-github-workflow.md) — branch, commit, PR conventions.
-6. The eight tracer-bullet issues #34–#41 on GitHub — read each issue body in full before starting work on it.
+6. The eight tracer-bullet issues on GitHub (#34, #35, #36, #37, #38, #39, #91, #92) — read each issue body in full before starting work on it.
 
 You do not need to read docs 01–03 unless you hit a conceptual question about CSI, SSL, or the project's research thesis. They are background, not instructions.
 
@@ -60,9 +62,9 @@ You do not need to read docs 01–03 unless you hit a conceptual question about 
 
 ## 3. The deliverable in one paragraph
 
-A 2-page IEEE-conference-format LaTeX paper, compiled to PDF, with a comparison table showing that **Doppler-aware time warping** (random time-axis stretch by a factor in `[0.7, 1.4]`) used as a SimCLR augmentation pair-half during self-supervised pre-training of a small CNN encoder on Widar3.0 cross-subject **improves linear-probe accuracy** vs a generic-augmentation baseline (Gaussian noise + random subcarrier mask) across three random seeds. The paper follows the structure of George's prior KICS Winter 2026 paper (`Towards Quantization-Native Zero-Knowledge Verification for INT4 Large Language Model Inference`). Output artifacts live under local-only `papers/kics-george/`. The submission upload itself is George's manual step. The project-tracked artifacts that surface this paper's existence are: the slice code, the run logs, the figure scripts, and a status pointer at `papers/team/george-kics-status.md`.
+A 2-page IEEE-conference-format LaTeX paper, compiled to PDF, with a comparison table showing that **Doppler-aware time warping** (random stretch of the CSI time axis by a factor in `[0.7, 1.4]`) used as a SimCLR augmentation pair-half during self-supervised pre-training of a small CNN encoder on **Widar3.0 raw CSI, cross-subject** **improves linear-probe accuracy** vs a generic-augmentation baseline (Gaussian noise + random subcarrier mask) across three random seeds. The paper follows the structure of George's prior KICS Winter 2026 paper (`Towards Quantization-Native Zero-Knowledge Verification for INT4 Large Language Model Inference`). Output artifacts live under local-only `papers/kics-george/`. The submission upload itself is George's manual step. The project-tracked artifacts that surface this paper's existence are: the slice code, the run logs, the figure scripts, and a status pointer at `papers/team/george-kics-status.md`.
 
-If the experimental result is **negative** (Doppler does not beat the baseline within the convention rule in [`docs/07-experiment-scaffold.md`](07-experiment-scaffold.md)), the paper still gets written — see section 11.
+If the experimental result is **negative** (Doppler does not beat the baseline within the convention rule in [`docs/07-experiment-scaffold.md`](07-experiment-scaffold.md)), the paper still gets written — see section 10.
 
 ---
 
@@ -78,7 +80,10 @@ git status                           # clean working tree (or only the .pptx unt
 git fetch origin
 gh auth status                       # logged in as Jupiter-Plantagenet
 python --version                     # 3.10 or newer
+ls -la data/widar3/raw/CSI_*.zip     # 15 raw-CSI archives totaling ~80 GB
 ```
+
+If `data/widar3/raw/CSI_*.zip` is missing or partial, the IEEE DataPort sync may still be running or failed. Check `data/widar3/raw/.sync-log.txt`. If incomplete, re-run with the `.env` credentials per section 6.5; do not redownload by other means without comment.
 
 ### 4.2 Create a Python virtual environment
 
@@ -90,10 +95,10 @@ python -m venv .venv
 source .venv/Scripts/activate
 
 pip install --upgrade pip wheel
-pip install torch numpy scipy matplotlib pyyaml tqdm scikit-learn
-pip install pytest                   # for sanity tests
-# Note: GPU torch wheel install if a CUDA GPU is detected; otherwise CPU is fine
+pip install -r requirements.txt
 ```
+
+`requirements.txt` lists everything you need: `torch`, `numpy`, `scipy`, `scikit-learn`, `matplotlib`, `csiread` for parsing Intel 5300 `.dat` files; `pytest` for tests; `black` and `ruff` for CI.
 
 If `pip install torch` is slow, use the official PyTorch index:
 
@@ -109,7 +114,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cu121
 python -c "import torch; print('cuda:', torch.cuda.is_available()); print('device count:', torch.cuda.device_count())"
 ```
 
-If `cuda: False`, you are on CPU. Read section 5 — your compute strategy changes.
+GPU is recommended for raw-CSI pre-training. CPU is workable with a downsampled time axis (see section 5) but ~5–10× slower per epoch.
 
 ### 4.4 LaTeX
 
@@ -125,69 +130,119 @@ You only need LaTeX for T1.7 and T1.8. Do not block earlier tracer bullets on th
 
 ## 5. Compute strategy
 
-Pre-training even a small SimCLR model on Widar3.0 takes meaningful compute. Plan accordingly.
+Raw CSI is much larger than BVP — each per-gesture sample is roughly `T × 30 × 3` complex numbers, where `T` is the number of packets (~1000–2000 for a 1–2-second gesture at 1000 packets/s). A single sample is on the order of 100–200 KB; a batch of 256 samples × 6 gestures × 17 users × 5 trials runs into tens of GB of in-memory tensors.
 
-### 5.1 If a CUDA GPU is available
+**Default strategy:**
 
-You can do everything locally. Budget ~30 minutes per pre-training run (50 epochs, batch size 256, ~50K-param encoder). Three seeds × two conditions = 6 runs ≈ 3 hours.
+- **Crop / window each gesture to a fixed `T = 1024` samples** (≈ 1 sec). This gives a per-sample tensor of shape `(1024, 30, 3)`.
+- **Use only one receiver (`r1`) and one antenna pair per receiver** during initial development to reduce I/O. Expand to all 3 antenna pairs once the pipeline runs.
+- **Cache parsed tensors to `data/widar3/cache/<split>.pt`** (gitignored) after the first pass. Subsequent runs skip parsing.
 
-### 5.2 If you are on CPU only
+**Time budgets, on the default strategy:**
 
-Local CPU is too slow for full pre-training. Options:
+- **GPU (T4 / 3060 / similar):** SimCLR pre-training (50 epochs, batch 256) ≈ 30–60 min per seed.
+- **CPU:** the same run ≈ 4–8 hours per seed. If you are on CPU, reduce `T` to 512 or downsample by 2× along time before caching, and reduce epochs to 30. Document the change in the per-run `notes.md`.
 
-1. **Google Colab (free)** — fastest path. Upload the `src/slices/george/` package as a zip, mount Drive for caching, run pre-training there, download the trained checkpoint. Free tier gives a T4 GPU for ~12-hour sessions. **Do not push large checkpoints to git** — they go to Drive or are kept ephemeral.
-2. **Kaggle Notebooks (free)** — similar idea. Persistent Kaggle datasets can host Widar3.0.
-3. **Reduced experimental scope** — use a 4-subject subset of Widar3.0 (instead of all 17) for the tracer bullets and final results. The paper's claim becomes "preliminary on a 4-subject subset" with explicit framing in the abstract. This is acceptable for KICS and aligns with the "Towards" framing of George's prior paper.
-
-**Decision rule:** if `torch.cuda.is_available()` is False, default to option 3 (reduced scope on CPU) and document the choice in a comment on issue #36 (T1.3, where real experiments start). Do **not** spend money on cloud GPU without George's explicit approval — see section 9.
-
-### 5.3 Stub vs real for tracer bullets
-
-T1.1 (scaffold) **must** run on stub data — 10 random tensors of CSI-shaped values. No real data needed. CPU is fine.
-
-T1.2 onward uses real data; this is where compute matters.
+Three seeds × two conditions = 6 runs total. On GPU, ~3–6 hours; on CPU, possibly overnight. **Do not use cloud GPU without George's explicit approval.**
 
 ---
 
-## 6. Dataset access
+## 6. Dataset on disk
 
-### 6.1 Widar3.0 — primary dataset
+The dataset is **already downloaded** (or downloading in the background) and lives at:
 
-Widar3.0 is hosted by the Tsinghua / SyNet group. The canonical access pattern in the WiFi-sensing literature:
-
-1. Visit the official Widar3.0 page (search: "Widar 3.0 dataset Tsinghua").
-2. Some access points require registration; some are public mirrors. Use Google to find a working public mirror if the official one is gated.
-3. Common forms: `.dat` files (raw CSI from Intel 5300) or pre-processed `.npy` arrays from a third-party loader.
-
-**Cache location:** `data/widar3/` (gitignored by the project's existing `.gitignore`). Do not commit raw data.
-
-**Schema:** the loader at `src/slices/george/data.py` (you will write it in T1.2) needs to expose:
-
-```python
-class Widar3CrossSubject:
-    def __init__(self, root: str, train: bool = True, train_subjects: list[int] = ...): ...
-    def __len__(self) -> int: ...
-    def __getitem__(self, i) -> tuple[torch.Tensor, int]:
-        # returns (csi_tensor, label)
-        # csi_tensor shape: (T, S, A) where T=time, S=subcarrier, A=antenna_pair
-        # label: int 0..K-1 for K activity classes
+```
+data/widar3/raw/                    # IEEE DataPort raw CSI archives (~80 GB)
+  CSI_20181109.zip   13.6 GiB
+  CSI_20181112.zip    8.6 GiB
+  CSI_20181115.zip    2.8 GiB
+  CSI_20181116.zip    2.4 GiB
+  CSI_20181117.zip    1.3 GiB
+  CSI_20181118.zip    2.7 GiB
+  CSI_20181121.zip   13.3 GiB
+  CSI_20181127.zip    2.7 GiB
+  CSI_20181128.zip  986.3 MiB
+  CSI_20181130.zip   18.8 GiB
+  CSI_20181204.zip    1.9 GiB
+  CSI_20181205.zip    2.7 GiB
+  CSI_20181208.zip    1.5 GiB
+  CSI_20181209.zip    1.5 GiB
+  CSI_20181211.zip    5.1 GiB
+  BVP.zip                          # also pulled, 384 MiB; not needed for Slice 1 but useful for cross-checks
+  BVPExtractionCode.zip            # MATLAB code from authors; reference only
+  DNN_Model.zip                    # tiny pretrained models from the paper
+data/ut_har/UT_HAR.zip              # 365 MB, fallback only
 ```
 
-The cross-subject split convention: pick `[1, 2, 3, 4]` as test subjects, the rest as train. Hard-code this in T1.2 unless a published cross-subject split convention is found.
+All gitignored. You do not download anything during the slice. Extraction is part of T1.2 and the loader reads from the extracted tree.
 
-### 6.2 If Widar3.0 is unavailable
+### 6.1 CSI archive layout
 
-Fall back, in order:
+After extraction (one date as an example — extract the others on demand):
 
-1. **A Widar3.0 mirror on Hugging Face Datasets** — search "widar" or "widar3" on huggingface.co/datasets. If found, the loader becomes a thin wrapper over `datasets.load_dataset`.
-2. **UT-HAR** as a substitute. Smaller, single-environment dataset. Adjust the paper's framing to "evaluated on UT-HAR within-domain with a held-out user split" — note this requires updating the abstract and conclusions.
-3. **Synthetic CSI** as a last resort. Define a synthetic generator that produces CSI-like signals with a known Doppler structure, and run the entire pipeline on synthetic data. The paper becomes a methods-paper rather than a benchmark paper. **Document this clearly in the title and abstract** — do not pretend synthetic results are real.
+```
+data/widar3/raw/CSI_20181109/
+├── user1/
+│   ├── user1-1-1-1-1-r1.dat      # gesture, position, orientation, trial, receiver
+│   ├── user1-1-1-1-1-r2.dat
+│   ├── user1-1-1-1-1-r3.dat
+│   ├── ... (user1-2-... ... user1-G-P-O-T-rR.dat)
+├── user2/
+│   └── ...
+└── ...
+```
 
-If you fall back to (2) or (3), comment on issue #35 explaining the fallback and **STOP** — wait for George to confirm the change in scope.
+Each `.dat` file is a raw Intel 5300 CSI capture for one (user, gesture, position, orientation, trial, receiver) combination. Parsed via `csiread.Intel(...)`.
 
-### 6.3 CSI-Bench
+### 6.2 Parsing a `.dat` file
 
-Not needed for Slice 1. Ignore.
+```python
+import csiread
+
+reader = csiread.Intel("data/widar3/raw/CSI_20181109/user1/user1-1-1-1-1-r1.dat", nrxnum=3, ntxnum=1, pl_size=10)
+reader.read()
+# reader.csi: complex64 array of shape (n_packets, 30 subcarriers, nrxnum=3, ntxnum=1)
+# reader.timestamp: float64 array of shape (n_packets,)
+
+csi = reader.get_scaled_csi()           # apply Intel 5300 scaling
+csi = csi.squeeze(-1)                    # drop ntxnum=1 dim → (n_packets, 30, 3)
+```
+
+If `n_packets == 0`, the file is empty (packet loss during collection — common in this dataset). **Skip empty files silently.**
+
+### 6.3 Filename schema
+
+`userN-G-P-O-T-rR.dat`
+
+- `userN` — user ID, `user1` through `user17`.
+- `G` — gesture (1–6 for the canonical six gestures we care about).
+- `P` — position (1–5).
+- `O` — orientation (1–5).
+- `T` — trial index.
+- `R` — receiver (1–6).
+
+The canonical 6-gesture subset for Slice 1: G ∈ {1, 2, 3, 4, 5, 6} corresponding to Push&Pull, Sweep, Clap, Slide, Draw-Zigzag, Draw-Circle.
+
+### 6.4 Cross-subject split
+
+The Widar3.0 paper does not lock a single canonical cross-subject split; downstream papers vary. Default for Slice 1: **train on `user1`–`user13`, test on `user14`–`user17`** (≈75 / 25 split). Document the choice in `papers/team/george-kics-status.md`.
+
+If a particular date's archive has fewer than 17 users (likely — recording sessions were spread across days and not every user attended every session), enumerate users from the actual extracted files and document the per-date user list.
+
+### 6.5 If the sync is incomplete
+
+Re-run with the credentials in `.env`:
+
+```bash
+export AWS_ACCESS_KEY_ID=$(grep "Access Key ID" .env | sed 's/.*: //' | tr -d '\r\n ')
+export AWS_SECRET_ACCESS_KEY=$(grep "Secret Access Key" .env | sed 's/.*: //' | tr -d '\r\n ')
+export AWS_DEFAULT_REGION=us-east-1
+aws s3 sync s3://ieee-dataport/open/43812/3460/ data/widar3/raw/ \
+  --exclude "*" \
+  --include "CSI_*.zip" --include "BVP.zip" --include "BVPExtractionCode.zip" --include "DNN_Model.zip"
+```
+
+`aws s3 sync` is idempotent — it only re-fetches missing files. **Never commit the `.env` file**; it is gitignored, but be careful not to echo the credentials into chat or any file.
 
 ---
 
@@ -198,25 +253,25 @@ For each tracer bullet, the steps are:
 1. Read the issue body on GitHub: `gh issue view <NUM>`
 2. Create a branch: `git checkout main && git pull && git checkout -b george/T1.X-short-description`
 3. Implement, committing in small, reviewable chunks
-4. Run the self-review checklist (section 9.4)
+4. Run the self-review checklist (section 9.3)
 5. Push: `git push -u origin <branch>`
 6. Open PR: `gh pr create --fill --assignee Jupiter-Plantagenet`
 7. Comment on the corresponding issue with the PR link
-8. **STOP and wait for George to merge.** Do not proceed to the next tracer bullet until the PR is merged. (See section 9 — this is the key STOP point.)
+8. **STOP and wait for George to merge.** Do not proceed to the next tracer bullet until the PR is merged.
 
 **Important:** The PR being open is the trigger for George to review. Do not open multiple PRs at once and stack work on top of unmerged PRs. One tracer bullet, one PR, one review-and-merge cycle.
 
 ### 7.1 T1.1 — Scaffold + SimCLR end-to-end with stub data (issue #34)
 
-**Goal.** A runnable Python package under `src/slices/george/` that defines a tiny CNN encoder, a SimCLR loss, a linear-probe evaluator, and a `run.py` that strings them together on 10 random stub samples and prints a number. Number need not be meaningful — pipeline must run.
+**Goal.** A runnable Python package under `src/slices/george/` that defines a tiny CNN encoder, a SimCLR loss, a linear-probe evaluator, and a `run.py` that strings them together on 10 random stub CSI samples shaped `(1024, 30, 3)` and prints a number. Number need not be meaningful — pipeline must run.
 
 **Default approach.**
 
 - `src/slices/george/__init__.py` — empty.
-- `src/slices/george/encoder.py` — class `TinyCNN(nn.Module)`, three Conv1d layers (64 → 128 → 256 channels) with ReLU + BatchNorm, AdaptiveAvgPool1d(1), flatten to a 256-dim feature vector. Total ~50K parameters. The CSI tensor is reshaped to `(B, S*A, T)` before the conv stack — subcarrier × antenna_pair becomes the channel dim, time becomes the conv axis.
+- `src/slices/george/encoder.py` — class `TinyCNN(nn.Module)`. Input shape `(B, 1024, 30, 3)` reshaped to `(B, 90, 1024)` — flatten `(subcarrier × antenna_pair) → 90` channels, `time → 1024` along the conv axis. Three Conv1d layers `90 → 128 → 128 → 256` with ReLU + BatchNorm and stride 2 between them, AdaptiveAvgPool1d(1), flatten to a 256-dim feature vector. Total ~80K parameters.
 - `src/slices/george/ssl.py` — `class SimCLR` wrapping the encoder + a 2-layer MLP projection head. NT-Xent loss with temperature 0.5.
 - `src/slices/george/eval.py` — `linear_probe(encoder, train_loader, test_loader)` freezes the encoder, fits a linear classifier on its outputs, returns test accuracy.
-- `src/slices/george/data.py` — `class StubCSI` returning 10 random tensors shaped `(100, 30, 3)` (T, S, A) with random labels in `{0, 1, 2, 3, 4, 5}`.
+- `src/slices/george/data.py` — `class StubCSI` returning 10 random tensors shaped `(1024, 30, 3)` (cast to float32 — for stub data, real-valued is fine; the real loader will return `(real, imag)` channels) with random labels in `{0, 1, 2, 3, 4, 5}`.
 - `src/slices/george/run.py` — entrypoint: build encoder, build SimCLR wrapper, pre-train for 2 epochs on `StubCSI`, run `linear_probe`, print final accuracy.
 - `tests/slices/george/test_smoke.py` — `pytest` test that imports `run` and runs `main()` without crashing.
 - `src/slices/george/README.md` — one-paragraph overview, how to run.
@@ -229,41 +284,44 @@ For each tracer bullet, the steps are:
 
 **Notes.**
 
-- Do not use the project's `src/scaffold/` directory yet — it does not exist. Slice 1 may pioneer the encoder; future slices can copy.
+- The encoder's input convention is "amplitude only" by default — `csi.abs()` before the conv stack. Phase is dropped at this layer; preserved upstream so future slices (e.g. Slice 3 phase-noise) can use it. Document this in the encoder docstring.
 - Use `torch.compile` only if it works out of the box; otherwise skip.
 - Keep all code Python 3.10-compatible.
 
-### 7.2 T1.2 — Real Widar3.0 cross-subject loader (issue #35)
+### 7.2 T1.2 — Real Widar3.0 raw-CSI cross-subject loader (issue #35)
 
 **Goal.** Replace `StubCSI` with a real Widar3.0 cross-subject loader. The same `run.py` from T1.1 should now produce above-chance accuracy.
 
 **Default approach.**
 
-1. Find Widar3.0 (see section 6).
-2. Implement `Widar3CrossSubject(root, train, train_subjects=...)` per section 6.1 schema.
-3. Cache parsed data to `data/widar3/cache/<split>.pt` to avoid re-parsing on every run.
+1. Extract `data/widar3/raw/CSI_20181109.zip` (a representative date) to `data/widar3/raw/CSI_20181109/`. If the date doesn't have all 17 users, extract additional dates. Document which dates' data you use.
+2. Implement `Widar3RawCrossSubject(roots, train, train_users=range(1, 14), test_users=range(14, 18))` that:
+   - walks each `roots/userN/` directory
+   - keeps files whose `(G, P, O, R) = (1..6, 1, 1, 1)` — the canonical-six-gesture subset, position 1, orientation 1, receiver 1
+   - parses each via `csiread.Intel`
+   - takes amplitude (`np.abs(reader.get_scaled_csi().squeeze(-1))`)
+   - crops or pads to `T = 1024`
+   - returns `(tensor, label)` where label is the gesture index 0–5
+3. Cache parsed tensors to `data/widar3/cache/cross_subject_<train|test>.pt` (gitignored).
 4. Update `run.py` to use the real loader. Bump epochs to 50, batch size to 256.
-5. Sanity-check: print the first sample's shape and label.
+5. Sanity-check: print the first sample's shape, label, and the user/file it came from.
 
 **What done looks like.**
 
 - Linear-probe accuracy on cross-subject test ≥ 17% (chance) and ideally ≥ 25% (showing the encoder learned something even with no augmentation).
-- Loader handles the case where data is already cached (do not re-download or re-parse).
-- A small README at `src/slices/george/data.py` docstring or `data/widar3/README.md` documents how to obtain Widar3.0.
-
-**Notes.**
-
-- If Widar3.0 download path returns 404 or is gated and you cannot resolve it, see section 6.2 fallback chain. **Comment on the issue and STOP** before falling back to synthetic data.
+- Loader handles the case where data is already cached (do not re-parse).
+- Empty `.dat` files (`reader.read()` returns 0 packets) are silently skipped.
+- A short README at `src/slices/george/data.py` docstring explains the schema and the cross-subject split.
 
 ### 7.3 T1.3 — Generic-augmentation baseline (issue #36)
 
-**Goal.** Run SimCLR with two generic augmentations (Gaussian noise + random subcarrier masking) as the augmentation pair, single seed, and record the cross-subject linear-probe accuracy. This is the baseline George's Doppler aug needs to beat.
+**Goal.** Run SimCLR with two generic augmentations (Gaussian noise + random subcarrier mask) as the augmentation pair, single seed, and record the cross-subject linear-probe accuracy. This is the baseline George's Doppler aug needs to beat.
 
 **Default approach.**
 
 - `src/slices/george/augmentations.py`:
-  - `gaussian_noise(x, sigma=0.05)` — additive Gaussian noise.
-  - `random_subcarrier_mask(x, p=0.15)` — zero out a random fraction of subcarriers.
+  - `gaussian_noise(x, sigma=0.05)` — additive Gaussian noise on the `(1024, 30, 3)` tensor.
+  - `random_subcarrier_mask(x, p=0.15)` — zero out a random fraction of the 30 subcarriers (applied identically across time and antenna pairs).
 - In `ssl.py`, the SimCLR view-pair function applies one randomly to view 1 and the other to view 2.
 - Single seed (`SEED=42` per [`docs/04-github-workflow.md`](04-github-workflow.md)).
 - Log result to `results/<YYYY-MM-DD>-george-baseline-singleseed/` with `config.yaml`, `git_hash.txt`, `metrics.json`, `notes.md`.
@@ -273,9 +331,9 @@ For each tracer bullet, the steps are:
 - A reproducible cross-subject linear-probe accuracy number, printed and logged.
 - The `results/` directory contains all four required files per [`docs/07-experiment-scaffold.md`](07-experiment-scaffold.md).
 
-### 7.4 T1.4 — Doppler-aware time warping augmentation (issue #37)
+### 7.4 T1.4 — Doppler-aware time warping (issue #37)
 
-**Goal.** Implement Doppler-aware time warping. Use it as one half of the SimCLR view pair (the other half stays as the generic augmentation, OR also Doppler — see notes). Record cross-subject linear-probe accuracy, single seed.
+**Goal.** Implement Doppler-aware time warping on the raw-CSI time axis. Use as the SimCLR augmentation pair (symmetric — both views warped). Single seed.
 
 **Default implementation.**
 
@@ -283,36 +341,28 @@ For each tracer bullet, the steps are:
 def doppler_warp(x: torch.Tensor, factor: float = None) -> torch.Tensor:
     """Stretch CSI's time axis by a random factor in [0.7, 1.4].
 
-    x: (T, S, A)
+    x: (T, 30, 3)
     factor: if None, sampled uniformly from [0.7, 1.4]
-    returns: (T, S, A) — same length as input, via interpolation
+    returns: (T, 30, 3) — same length as input, via linear interpolation + crop/pad
     """
     if factor is None:
         factor = float(torch.empty(1).uniform_(0.7, 1.4))
     T, S, A = x.shape
-    t_orig = torch.linspace(0, 1, T)
-    t_warped = torch.linspace(0, 1, int(T * factor))
-    # resample x along time axis
+    new_T = max(1, int(T * factor))
     x_r = torch.nn.functional.interpolate(
-        x.permute(1, 2, 0).unsqueeze(0),  # (1, S, A, T)
-        size=int(T * factor),
+        x.permute(1, 2, 0).unsqueeze(0),  # (1, 30, 3, T)
+        size=new_T,
         mode='linear',
         align_corners=False,
     ).squeeze(0).permute(2, 0, 1)
-    # crop or pad back to T
     if x_r.shape[0] >= T:
         return x_r[:T]
     else:
-        pad = torch.zeros(T - x_r.shape[0], S, A)
+        pad = torch.zeros(T - x_r.shape[0], S, A, dtype=x.dtype, device=x.device)
         return torch.cat([x_r, pad], dim=0)
 ```
 
-**View-pair strategy.** Two reasonable choices, document the one you pick:
-
-1. **Asymmetric:** view 1 = generic baseline aug, view 2 = Doppler. Compares Doppler against generic in a direct contrast.
-2. **Symmetric:** both views = Doppler with independently sampled factors. Tests Doppler in isolation.
-
-The default for the comparison table is **symmetric Doppler vs symmetric generic** — that is what gives a clean apples-to-apples comparison.
+**View-pair strategy.** Symmetric — both SimCLR views are Doppler-warped with independently sampled factors. Document in the writeup if you deviate.
 
 **What done looks like.**
 
@@ -331,8 +381,8 @@ import torch
 from src.slices.george.augmentations import doppler_warp
 
 def test_doppler_doubles_frequency():
-    T, S, A = 256, 1, 1
-    f0 = 8.0  # cycles over the window
+    T, S, A = 1024, 1, 1
+    f0 = 50  # cycles over the window
     t = torch.linspace(0, 1, T)
     x = torch.sin(2 * torch.pi * f0 * t).reshape(T, S, A)
 
@@ -343,18 +393,16 @@ def test_doppler_doubles_frequency():
     peak_x = int(fft_x.argmax())
     peak_y = int(fft_y.argmax())
 
-    # factor 2.0 stretches time → halves frequency in the warped sample's frame
-    # but the warp is applied AND re-cropped to T, so the dominant frequency
-    # of the cropped result corresponds to ~f0/2 in the new frame.
-    # Verify: peak_y is approximately peak_x // 2 (within tolerance).
-    assert abs(peak_y - peak_x // 2) <= 2, f"expected peak near {peak_x//2}, got {peak_y}"
+    # factor 2.0 stretches time by 2× then crops to T.
+    # The peak that was at frequency f0 in x lands at ~f0/2 in y's frame.
+    assert abs(peak_y - peak_x // 2) <= 3, f"expected peak near {peak_x//2}, got {peak_y}"
 ```
 
-**Notes.** The exact direction of the frequency shift depends on whether the warp is *resample-then-crop* or *resample-and-rescale*. The test expectation must match the actual implementation. Adjust the assertion if the test fails — but only after confirming the implementation does what it claims.
+**Notes.** The exact direction of the frequency shift depends on whether the warp is *resample-then-crop* or *resample-and-rescale*. The test expectation must match the actual implementation. If the test fails, confirm the implementation does what it claims before adjusting the assertion.
 
 ### 7.6 T1.6 — Multi-seed comparison (issue #39)
 
-**Goal.** Run T1.3 and T1.4 with three random seeds each. Compute mean ± std. Apply the convention rule from [`docs/07-experiment-scaffold.md`](07-experiment-scaffold.md) section 1: improvement is "real" if `mean(ours) > mean(baseline) + std(baseline)`.
+**Goal.** Run T1.3 and T1.4 with three random seeds each. Compute mean ± std. Apply the convention rule from [`docs/07-experiment-scaffold.md`](07-experiment-scaffold.md): improvement is "real" if `mean(ours) > mean(baseline) + std(baseline)`.
 
 **Default approach.**
 
@@ -364,32 +412,32 @@ def test_doppler_doubles_frequency():
 
 **What done looks like.**
 
-- Six total runs (or twelve, if you compute both linear-probe-from-scratch and full fine-tune; default is just linear probe).
+- Six total runs.
 - A table like:
 
 | Configuration | Cross-subject acc (mean ± std) |
 |---|---|
 | No augmentation | XX.X ± Y.Y |
-| Gaussian noise + random mask (baseline) | XX.X ± Y.Y |
+| Gaussian noise + random subcarrier mask (baseline) | XX.X ± Y.Y |
 | **Doppler-aware time warping (ours)** | **XX.X ± Y.Y** |
 
 - A line of prose stating whether the improvement passes the convention rule.
 
-### 7.7 T1.7 — KICS paper draft (issue #40)
+### 7.7 T1.7 — KICS paper draft (issue #91)
 
-**Goal.** Produce `papers/kics-george/main.tex`, `papers/kics-george/refs.bib`, and a compiled `papers/kics-george/main.pdf` that follows the structure in [`docs/08-team-work-plan.md`](08-team-work-plan.md) section 4 KICS outline.
+**Goal.** Produce `papers/kics-george/main.tex`, `papers/kics-george/refs.bib`, and a compiled `papers/kics-george/main.pdf` that follows the structure in [`docs/08-team-work-plan.md`](08-team-work-plan.md) section 4 KICS outline, with the raw-CSI framing.
 
 **Project-tracked artifacts (these go in the PR diff):**
 
 - `src/slices/george/figures.py` — script that produces `fig1-pipeline.pdf` (or `.png`). Same figure output, but the script is what gets reviewed; the rendered figure lives locally only.
-- `papers/team/george-kics-status.md` — short status pointer file. New on this PR. Three sections: "draft state" (e.g. "draft compiled, 2 pages, references unverified"), "local paper path" (e.g. "`papers/kics-george/main.pdf` on George's machine"), "notes for reviewer" (e.g. flags about placeholder figures, missing citations).
+- `papers/team/george-kics-status.md` — short status pointer file. New on this PR. Three sections: "draft state", "local paper path", "notes for reviewer".
 - Any updates to `results/` if extra runs were needed for the figure.
 
 **Local-only artifacts (these do NOT go in the PR):**
 
 - `papers/kics-george/main.tex`, `papers/kics-george/refs.bib`, `papers/kics-george/main.pdf`, `papers/kics-george/fig1-pipeline.pdf`. All under the gitignored directory.
 
-See section 12 for IEEEtran setup, author list, acknowledgment, and reference template — all the boilerplate that is hard to reconstruct without the prior paper in front of you.
+See section 11 for IEEEtran setup, author list, acknowledgment, and reference template — all the boilerplate that is hard to reconstruct without the prior paper in front of you.
 
 **What done looks like.**
 
@@ -399,7 +447,7 @@ See section 12 for IEEEtran setup, author list, acknowledgment, and reference te
 - One architecture figure (Fig. 1) is rendered at `papers/kics-george/fig1-pipeline.pdf` (local) by the project-tracked `src/slices/george/figures.py`.
 - `papers/team/george-kics-status.md` exists and accurately describes the draft state.
 
-### 7.8 T1.8 — KICS paper polish and submission staging (issue #41)
+### 7.8 T1.8 — KICS paper polish and submission staging (issue #92)
 
 **Goal.** A submission-ready PDF, with all references verified, format checked, and a checklist for George to do the actual portal upload.
 
@@ -423,7 +471,7 @@ See section 12 for IEEEtran setup, author list, acknowledgment, and reference te
 - Commits: imperative voice, ≤72-char subject. Body explains *why* if non-obvious. Examples:
   - `T1.1: Add tiny CNN encoder and SimCLR loss skeleton`
   - `T1.4: Implement Doppler-aware time warping augmentation`
-  - `T1.6: Run multi-seed comparison; Doppler beats baseline by 2.3%`
+  - `T1.6: Run 3-seed comparison; Doppler beats baseline by 2.3%`
 - One PR per tracer bullet. Link the issue with `Closes #34` (or whichever number) in the PR body.
 - PR title: `T1.X — <short description>`. Body: 3–6 sentences on what the PR does, what was tested, and any open questions. For T1.7 / T1.8, include the local path to the compiled paper PDF in the PR body.
 
@@ -434,13 +482,14 @@ See section 12 for IEEEtran setup, author list, acknowledgment, and reference te
 ### 9.1 STOP points (never proceed past these without George's input)
 
 - **Each opened PR is a STOP point.** Wait for George to merge before opening the next tracer bullet's PR.
-- **Widar3.0 unavailable.** Comment on issue and STOP. Section 6.2 fallback chain requires George's explicit OK.
-- **Negative experimental result** (Doppler does not beat baseline by the convention rule). Comment on issue #39, write up the result honestly, and STOP before T1.7. The paper still gets written but the framing changes — see section 11.
-- **Compute budget overrun.** If a single tracer bullet's experiments would take >12 hours of wall-clock or any cloud cost, STOP and ask.
+- **Raw-CSI archives missing or corrupted.** If `data/widar3/raw/CSI_*.zip` is incomplete and the section 6.5 retry doesn't resolve, comment and STOP.
+- **Negative experimental result** (Doppler does not beat baseline by the convention rule). Comment on issue #39, write up the result honestly, and STOP before T1.7. The paper still gets written but the framing changes — see section 10.
+- **A run takes ≫ the section-5 budget** (>2 hours per epoch on GPU, or >1 hour per epoch on CPU). That's a bug, not a compute-budget problem. STOP and investigate.
 - **LaTeX setup blocker.** If you cannot get any of the three LaTeX paths in section 4.4 working, STOP. Do not invent a workflow.
 - **The KICS submission portal.** You produce the PDF and the SUBMISSION.md checklist. George uploads. Period.
 - **Modifying any other slice's code.** Slices 2–6 are owned by other teammates. Do not touch their `src/slices/<owner>/` directories.
 - **Adding new collaborators or changing repo settings.** Don't.
+- **Echoing or committing the AWS credentials in `.env`.** Treat the file as load-bearing-but-radioactive.
 
 When you stop, the protocol is:
 
@@ -450,9 +499,9 @@ When you stop, the protocol is:
 
 ### 9.2 What you may do without asking
 
-- Read any file in the repo.
+- Read any file in the repo (other than `.env`).
 - Open issues for unexpected sub-questions you discover. Use the `Task` template. Tag `slice:george-doppler`.
-- Run experiments locally on whatever hardware is available, using free tiers of cloud services if needed (Colab free, Kaggle free).
+- Run experiments locally on whatever hardware is available.
 - Comment on existing issues with progress notes.
 - Open PRs against tracer-bullet branches.
 - Modify (gitignored) `papers/kics-george/` freely.
@@ -467,7 +516,7 @@ Run all of these. Do not open the PR until they pass.
 1. **Code runs.** `python -m <entrypoint>` works without errors.
 2. **Tests pass.** `pytest tests/slices/george/` is green.
 3. **Lint passes.** `black --check src/slices/george/ tests/slices/george/` and `ruff check src/slices/george/ tests/slices/george/`. Fix anything they flag.
-4. **No accidental commits.** `git diff main..HEAD` only shows the intended changes. No `__pycache__`, no `.venv`, no `data/widar3/`, **no `papers/kics-george/` files** (those are gitignored — confirm by running `git status` and ensuring nothing under `papers/kics-george/` shows up).
+4. **No accidental commits.** `git diff main..HEAD` only shows the intended changes. No `__pycache__`, no `.venv`, no `data/`, no `.env`, **no `papers/kics-george/` files** (those are gitignored — confirm by running `git status` and ensuring nothing under `papers/kics-george/` shows up).
 5. **Results are logged.** If this PR runs experiments, the `results/` directory has the four required files (`config.yaml`, `git_hash.txt`, `metrics.json`, `notes.md`). The `notes.md` is written by you, in plain prose, describing what you expected and what you saw.
 6. **Issue is referenced.** PR body says `Closes #N`.
 7. **For T1.7 and T1.8 only:** the PR diff contains only project-tracked artifacts (figure script, status pointer, results). The `.tex/.pdf/.bib` files are in your local working directory but not staged.
@@ -481,9 +530,9 @@ If after T1.6, the Doppler-aware augmentation does not beat the baseline within 
 1. Do **not** retroactively change the experimental design (different seeds, different aug parameters, different encoder) to "find" a positive result. That is data dredging.
 2. Comment on issue #39 with the full result table and the conclusion.
 3. STOP. Wait for George to decide whether to:
-   - **Proceed with the negative result.** The paper becomes "Towards Physics-Informed Augmentation: A Negative Result on Cross-Subject WiFi CSI Sensing" or similar. KICS accepts negative results, especially with "Towards" framing. The paper structure in section 12 is largely unchanged — only the conclusion and abstract framing shift.
+   - **Proceed with the negative result.** The paper becomes "Towards Physics-Informed Augmentation: A Negative Result on Cross-Subject WiFi CSI Sensing" or similar. KICS accepts negative results, especially with "Towards" framing. The paper structure in section 11 is largely unchanged — only the conclusion and abstract framing shift.
    - **Iterate one parameter** before re-evaluating (e.g., warp range `[0.5, 1.7]` instead of `[0.7, 1.4]`). At most one iteration; if that fails, the result is genuinely negative.
-   - **Pivot** the paper to a different angle (e.g., comparing several augmentations all of which underperform). This requires significant scope change and is George's call.
+   - **Pivot** the paper to a different angle. This requires significant scope change and is George's call.
 
 A negative result is publishable, useful, and honest. Treat it as such.
 
@@ -569,7 +618,11 @@ This work was partly supported by the Innovative Human Resource Development for 
 
 (Note the `\%` escapes for percent signs in LaTeX.)
 
-### 11.4 Reference list (start from these, verify each)
+### 11.4 Abstract template (~150 words)
+
+> *Cross-subject generalization is a known weakness of WiFi channel-state-information (CSI) sensing systems, with reported accuracy drops when test subjects differ from training subjects. Existing self-supervised learning (SSL) approaches use generic data augmentations borrowed from computer vision, which do not reflect the physical phenomena that drive cross-domain shift. We observe that activity speed scales the Doppler component of CSI approximately linearly, a structure that augmentation design has not previously exploited. We present Doppler-aware time warping, a physics-informed augmentation that stretches the time axis of a raw CSI sample by a random factor in [0.7, 1.4] during SimCLR pre-training. On the Widar3.0 cross-subject benchmark with a frozen-encoder linear probe, Doppler-aware time warping improves accuracy by X.X ± Y.Y\% over a Gaussian-noise + random-subcarrier-mask baseline across three random seeds.*
+
+### 11.5 Reference list (start from these, verify each)
 
 In `papers/kics-george/refs.bib` (local-only). Confirm each by opening the actual paper. Use Google Scholar or arXiv to find the canonical bib entry.
 
@@ -624,13 +677,13 @@ In `papers/kics-george/refs.bib` (local-only). Confirm each by opening the actua
 }
 ```
 
-Add 1–2 more references if space allows: a domain-generalization survey, or CIG-MAE (cross-modal MAE for WiFi sensing) for completeness.
+Add 1–2 more references if space allows: a domain-generalization survey, or CIG-MAE for completeness.
 
-### 11.5 The architecture figure (Fig. 1)
+### 11.6 The architecture figure (Fig. 1)
 
 Match the visual style of George's prior paper Fig. 1. Components, left to right:
 
-1. A box labelled **Widar3.0 CSI sample** (input).
+1. A box labelled **Widar3.0 raw CSI sample (T=1024, 30 subcarriers, 3 antenna pairs)** (input).
 2. Two parallel arrows to two boxes labelled **View 1: Doppler warp (factor f₁)** and **View 2: Doppler warp (factor f₂)**.
 3. Both feed into a box labelled **Tiny CNN encoder (f_θ)**.
 4. Encoder outputs feed into a box labelled **NT-Xent loss** (SimCLR).
@@ -642,7 +695,7 @@ The figure is produced by `src/slices/george/figures.py` (project-tracked). The 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig1-pipeline.pdf}
-\caption{Proposed pipeline. CSI samples are augmented twice with independently sampled Doppler warp factors; the two views are encoded and contrasted via NT-Xent. The pre-trained encoder is frozen for cross-subject linear-probe evaluation.}
+\caption{Proposed pipeline. Raw CSI samples are augmented twice with independently sampled Doppler warp factors along the time axis; the two views are encoded and contrasted via NT-Xent. The pre-trained encoder is frozen for cross-subject linear-probe evaluation.}
 \label{fig:pipeline}
 \end{figure}
 ```

@@ -10,6 +10,13 @@ __pycache__/
 venv/
 env/
 
+# Secrets / credentials — never commit
+.env
+.env.*
+!.env.example
+*.secret
+credentials.json
+
 # Packaging / tooling caches
 *.egg-info/
 .pytest_cache/
@@ -28,15 +35,12 @@ Thumbs.db
 .idea/
 *.swp
 
-# Project-specific: large data and trained weights do not belong in git
+# Project-specific: large data and trained weights do not belong in git.
+# `results/<date>-<slice>-<short-description>/` is project-tracked (the four
+# text files config.yaml, git_hash.txt, metrics.json, notes.md per
+# `docs/07-experiment-scaffold.md`); the rules below keep large artefacts out.
 data/
-results/
 *.pth
 *.ckpt
 *.pt
 wandb/
-
-# George's KICS paper artifacts (personal academic output, not project-tracked).
-# The slice's engineering work is committed; the paper itself lives locally only.
-# See docs/slice-1-afk-plan.md section 1 for the full commit-boundary rationale.
-papers/kics-george/
