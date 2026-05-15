@@ -27,6 +27,7 @@ from torch.utils.data import DataLoader
 
 from .augmentations import gaussian_then_mask, random_crop
 from .autofi import AutoFiCNN, AutoFiGSS, pretrain_autofi
+from .capc import CAPCBranch, pretrain_capc
 from .data import CSI_A, CSI_S, CSI_T, NUM_CLASSES, StubCSI, Widar3CrossSubject
 from .encoder import SupervisedClassifier, TinyCNN, count_parameters
 from .eval import evaluate, linear_probe, train_supervised
@@ -60,6 +61,45 @@ def _autofi_linear_probe(
             x = x.to(device).float().permute(0, 3, 2, 1).contiguous()
             h = encoder(x)
             feats.append(h.cpu().numpy())
+            labels.append(np.asarray(y))
+        return np.concatenate(feats, axis=0), np.concatenate(labels, axis=0)
+
+    tr_x, tr_y = _features(train_loader)
+    te_x, te_y = _features(test_loader)
+    clf = LogisticRegression(max_iter=1000, random_state=seed).fit(tr_x, tr_y)
+    return float(np.mean(clf.predict(te_x) == te_y))
+
+
+@torch.no_grad()
+def _capc_linear_probe(
+    branch: CAPCBranch,
+    train_loader: DataLoader,
+    test_loader: DataLoader,
+    *,
+    device: str,
+    seed: int,
+    n_f: int,
+) -> float:
+    """Frozen-encoder linear probe for CAPC.
+
+    Per §IV-B "linear classifier C_phi is fine-tuned with labelled CSI
+    based on the concatenated representations from all windows generated
+    by the pre-trained encoder E_theta". So we encode every window and
+    concatenate the per-window embeddings as the feature vector.
+    """
+    from sklearn.linear_model import LogisticRegression
+    from .capc import _split_windows, _to_capc_input
+
+    branch.eval().to(device)
+
+    def _features(loader: DataLoader) -> tuple[np.ndarray, np.ndarray]:
+        feats: list[np.ndarray] = []
+        labels: list[np.ndarray] = []
+        for x, y in loader:
+            x = x.to(device).float()
+            windows = _split_windows(_to_capc_input(x), n_f)
+            z = branch.encode_windows(windows)
+            feats.append(z.flatten(1).cpu().numpy())
             labels.append(np.asarray(y))
         return np.concatenate(feats, axis=0), np.concatenate(labels, axis=0)
 
@@ -119,6 +159,31 @@ def main(
         print(f"[josiah] train losses: {[round(loss, 4) for loss in losses]}")
         acc = evaluate(model, test_loader, device=device)
         print(f"[josiah] supervised top-1 accuracy: {acc:.3f}")
+        return acc
+
+    if mode == "capc":
+        # T5.5: CAPC exact reproduction (Barahimi et al. 2024). Two-branch
+        # encoder + GRU + per-step bilinear predictors; hybrid loss
+        # L = L_BT + beta*(L_CPC^A + L_CPC^B), beta=50. LARS optimiser.
+        # The paper's `dual view` augmentation needs uplink + downlink CSI;
+        # Widar3.0 ships only one direction, so we use the documented
+        # CAPC* fallback (noise + subcarrier mask) — Table I row.
+        branch_a = CAPCBranch(in_channels=CSI_A, s=CSI_S, n_f=10,
+                              embedding_dim=128, hidden_dim=128, future_steps=9)
+        branch_b = CAPCBranch(in_channels=CSI_A, s=CSI_S, n_f=10,
+                              embedding_dim=128, hidden_dim=128, future_steps=9)
+        params = count_parameters(branch_a) + count_parameters(branch_b)
+        print(f"[T5.5] CAPC twin-branch params: {params}")
+        losses = pretrain_capc(
+            branch_a, branch_b, train_loader,
+            epochs=epochs, n_f=10, beta=50.0, bt_lambda=0.002, device=device,
+        )
+        print(f"[T5.5] CAPC pre-train losses: {[round(loss, 4) for loss in losses]}")
+        probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
+        acc = _capc_linear_probe(
+            branch_a, probe_train_loader, test_loader, device=device, seed=seed, n_f=10
+        )
+        print(f"[T5.5] CAPC linear-probe accuracy: {acc:.3f}")
         return acc
 
     if mode == "autofi":
@@ -186,12 +251,13 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--mode",
-        choices=["supervised", "simclr-trivial", "simclr-handcrafted", "autofi"],
+        choices=["supervised", "simclr-trivial", "simclr-handcrafted", "autofi", "capc"],
         default="supervised",
         help=(
             "Baseline mode: supervised (T5.1/T5.2), simclr-trivial (T5.3), "
             "simclr-handcrafted (T5.6, the comparison-column row), "
-            "autofi (T5.4, exact reproduction of Yang et al. 2022)."
+            "autofi (T5.4, exact reproduction of Yang et al. 2022), "
+            "capc (T5.5, exact reproduction of Barahimi et al. 2024)."
         ),
     )
     p.add_argument("--seed", type=int, default=42)
