@@ -247,7 +247,21 @@ def write_markdown(
         "``results/2026-*-josiah-*-aggregate/`` folders. Regenerate whenever a "
         "seed sweep finishes.\n"
     )
-    lines.append(f"![Baselines figure]({png_path.name})\n")
+    lines.append("## Figure 1 — BVP cross-subject comparison\n")
+    lines.append(
+        "All methods below run on the same Widar3.0 BVP cross-subject 6-class "
+        "split (train users 5–17, test users 1–4), with the same encoder family "
+        "and 3 seeds. This is the only apples-to-apples comparison in the paper.\n"
+    )
+    lines.append("![BVP comparison](bvp-comparison.png)\n")
+    lines.append("## Figure 2 — Published-baseline reproductions\n")
+    lines.append(
+        "Different datasets and class counts; side-by-side bars compare *our* "
+        "reproduction vs the paper's published cell. Colour encodes the "
+        "classification status (green = exact within 0.1 pp; orange = "
+        "hardware-limited / above-saturation; red = failed).\n"
+    )
+    lines.append("![Reproductions](reproductions.png)\n")
     lines.append("## Source numbers\n")
     lines.append("| Method | Our mean | Our std | Published | Classification | Citation |")
     lines.append("|---|---:|---:|---:|---|---|")
@@ -324,7 +338,13 @@ def write_markdown(
     print(f"wrote {out_path}")
 
 
-def write_png(rows: list[BaselineRow], *, out_path: Path) -> None:
+def write_bvp_comparison_png(rows: list[BaselineRow], *, out_path: Path) -> None:
+    """Figure 1: the only apples-to-apples figure - all methods on Widar3 BVP
+    cross-subject 6-class, same encoder family, same split, same seeds.
+
+    Project baselines (green) + proposed methods (purple), with a horizontal
+    reference line at the SimCLR-handcrafted baseline (the comparison column).
+    """
     try:
         import matplotlib
 
@@ -334,64 +354,139 @@ def write_png(rows: list[BaselineRow], *, out_path: Path) -> None:
         print("matplotlib not installed; skipping PNG")
         return
 
+    bvp_rows = [r for r in rows if r.method.startswith("bvp-") or r.method == "mae"]
+    # Order: supervised, simclr-trivial, simclr-handcrafted, MAE, then the 5 proposed.
+    order_keys = [
+        "bvp-supervised", "bvp-simclr-trivial", "bvp-simclr-handcrafted", "mae",
+        "bvp-doppler", "bvp-static-perturb", "bvp-velocity-jitter",
+        "bvp-coherent-mask", "bvp-doppler-coherent",
+    ]
+    bvp_rows = sorted(
+        [r for r in bvp_rows if r.method in order_keys],
+        key=lambda r: order_keys.index(r.method),
+    )
+
     labels: list[str] = []
     means: list[float] = []
     stds: list[float] = []
     colors: list[str] = []
-    published_values: list[Optional[float]] = []
-
-    for row in rows:
+    baseline_value: Optional[float] = None
+    for row in bvp_rows:
         agg = row.load()
         if agg is None:
             continue
         labels.append(row.label)
-        means.append(float(agg["mean"]))
+        m = float(agg["mean"])
+        means.append(m)
         stds.append(float(agg["std"]))
-        colors.append("#3a7d44" if row.kind == "project-baseline" else "#a23b72")
-        published_values.append(row.published_value)
-    # Always show CAPC as hardware-limited bar (placeholder zero).
-    capc_rows = [r for r in rows if "capc" in r.method]
-    for r in capc_rows:
-        if r.aggregate_dir.exists() and (r.aggregate_dir / "metrics.json").exists():
-            continue  # already added
-        labels.append(r.label)
-        means.append(0.0)
-        stds.append(0.0)
-        colors.append("#cccccc")
-        published_values.append(r.published_value)
+        colors.append("#3a7d44" if row.kind != "proposed-method" else "#a23b72")
+        if row.method == "bvp-simclr-handcrafted":
+            baseline_value = m
 
-    fig, ax = plt.subplots(figsize=(8.0, 4.5))
+    fig, ax = plt.subplots(figsize=(13.0, 6.5))
     x = list(range(len(labels)))
-    bars = ax.bar(x, means, yerr=stds, color=colors, capsize=4, edgecolor="black")
+    ax.bar(x, means, yerr=stds, color=colors, capsize=4, edgecolor="black", linewidth=0.7)
 
-    # Chance line: 1/6 for the project comparison column; 1/22 for AutoFi.
-    ax.axhline(1 / 6, linestyle="--", color="grey", linewidth=1, label="chance (6 cls)")
-    ax.axhline(1 / 22, linestyle=":", color="grey", linewidth=1, label="chance (22 cls)")
-
-    # Annotate published values where available.
-    for xi, pub in zip(x, published_values):
-        if pub is None:
-            continue
-        ax.scatter([xi], [pub], color="red", zorder=3)
-        ax.annotate(
-            f"paper={pub:.3f}",
-            xy=(xi, pub),
-            xytext=(0, 8),
-            textcoords="offset points",
-            ha="center",
-            fontsize=8,
-            color="red",
+    ax.axhline(1 / 6, linestyle="--", color="grey", linewidth=1, label="chance (1/6)")
+    if baseline_value is not None:
+        ax.axhline(
+            baseline_value, linestyle=":", color="#c44e4e", linewidth=1.4,
+            label=f"SimCLR-handcrafted = {baseline_value:.3f}",
         )
 
     for xi, mean, std in zip(x, means, stds):
-        ax.text(xi, mean + std + 0.02, f"{mean:.3f}", ha="center", fontsize=9)
+        ax.text(xi, mean + std + 0.012, f"{mean:.3f}", ha="center", fontsize=10)
 
-    ax.set_ylabel("Top-1 accuracy")
-    ax.set_title("Project + published baselines (Widar3.0 BVP, 6-class cross-subject)")
+    # Single-line, short labels (rotated 30° for clarity).
+    short_labels = [lbl.replace("\n", " ") for lbl in labels]
+
+    ax.set_ylabel("Top-1 accuracy (cross-subject test)", fontsize=11)
+    ax.set_title(
+        "Widar3.0 BVP cross-subject, 6 classes, 3 seeds — "
+        "project baselines (green) vs proposed methods (purple)",
+        fontsize=12,
+    )
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=9)
-    ax.set_ylim(0, 1.0)
-    ax.legend(loc="upper right", fontsize=8)
+    ax.set_xticklabels(short_labels, fontsize=9, rotation=22, ha="right")
+    ax.set_ylim(0, max(0.78, max(means) + 0.06))
+    ax.legend(loc="upper right", fontsize=10)
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"wrote {out_path}")
+
+
+def write_reproductions_png(rows: list[BaselineRow], *, out_path: Path) -> None:
+    """Figure 2: published-baseline reproduction attempts.
+
+    Side-by-side pairs (our / paper) per attempted cell. Each pair on its own
+    section (different datasets, different classes — no shared chance line).
+    Status colour-coded.
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return
+
+    pub_methods = ["mae-uthar", "autofi-uthar", "autofi", "capc-lab-to-home"]
+    pub_rows = sorted(
+        [r for r in rows if r.method in pub_methods],
+        key=lambda r: pub_methods.index(r.method),
+    )
+
+    pairs: list[tuple[str, float, float, str, str]] = []
+    # (label, ours, paper, status, footnote)
+    for row in pub_rows:
+        agg = row.load()
+        if agg is None or row.published_value is None:
+            continue
+        ours = float(agg["mean"])
+        paper = row.published_value
+        status = _classify(row, agg)
+        short_label = row.label.replace("\n", " ")
+        pairs.append((short_label, ours, paper, status, row.note))
+
+    status_color = {
+        "exact": "#2a9d8f",
+        "failed": "#c44e4e",
+        "hardware-limited": "#f4a261",
+        "above-saturation": "#f4a261",
+    }
+
+    fig, ax = plt.subplots(figsize=(11.0, 5.5))
+    width = 0.38
+    x = []
+    for i, (label, ours, paper, status, _note) in enumerate(pairs):
+        xi = i * 1.2
+        x.append(xi)
+        col = status_color.get(status, "#cccccc")
+        ax.bar(xi - width / 2, ours, width, color=col, edgecolor="black", linewidth=0.7, label="ours" if i == 0 else None)
+        ax.bar(xi + width / 2, paper, width, color="white", edgecolor="black", linewidth=0.7, hatch="///", label="paper" if i == 0 else None)
+        gap_pp = (ours - paper) * 100
+        ax.text(xi - width / 2, ours + 0.02, f"{ours:.3f}", ha="center", fontsize=9)
+        ax.text(xi + width / 2, paper + 0.02, f"{paper:.3f}", ha="center", fontsize=9, color="black")
+        ax.text(
+            xi, max(ours, paper) + 0.12,
+            f"{status}\n{gap_pp:+.2f} pp",
+            ha="center", fontsize=9,
+            color={"exact": "#2a9d8f"}.get(status, "#444444"),
+            fontweight="bold" if status == "exact" else "normal",
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([p[0] for p in pairs], fontsize=9)
+    ax.set_ylabel("Top-1 accuracy (note: different datasets, different class counts)", fontsize=10)
+    ax.set_title(
+        "Published-baseline reproductions: ours vs paper target",
+        fontsize=11,
+    )
+    ax.set_ylim(0, 1.20)
+    ax.legend(loc="upper left", fontsize=9)
+    ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
@@ -408,9 +503,11 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = default_rows(results_root)
     md_path = out_dir / "baselines-figure.md"
-    png_path = out_dir / "baselines-figure.png"
-    write_markdown(rows, out_path=md_path, png_path=png_path)
-    write_png(rows, out_path=png_path)
+    bvp_png = out_dir / "bvp-comparison.png"
+    repro_png = out_dir / "reproductions.png"
+    write_markdown(rows, out_path=md_path, png_path=bvp_png)
+    write_bvp_comparison_png(rows, out_path=bvp_png)
+    write_reproductions_png(rows, out_path=repro_png)
 
 
 if __name__ == "__main__":
