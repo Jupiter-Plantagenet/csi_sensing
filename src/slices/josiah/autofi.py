@@ -375,3 +375,226 @@ def run_autofi(
         f"branch2={metrics['accuracy_branch2']:.4f} max={metrics['accuracy']:.4f}"
     )
     return float(metrics["accuracy"])
+
+
+# =============================================================================
+# AutoFi UT-HAR — paper §IV-C exact reproduction target (20-shot = 0.788).
+
+
+class AutoFiUTHAREncoder(nn.Module):
+    """1D CNN encoder for UT-HAR ``(1, 250, 90)`` input.
+
+    Adapted from SenseFi ``CNN_encoder``; UT-HAR has 90 features per
+    timestep (30 subcarriers × 3 antennas), so 1D convolution along time
+    with 90 input channels matches the input geometry better than the
+    NTU-Fi-shaped 2D encoder. Three conv blocks preserve SenseFi's depth
+    and the projection-head topology.
+    """
+
+    def __init__(self, hidden_states: int = 256) -> None:
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv1d(90, 64, kernel_size=7, stride=2, padding=3),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(64, 128, kernel_size=5, stride=2, padding=2),
+            nn.BatchNorm1d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool1d(1),
+            nn.Flatten(),
+        )
+        self.feat_dim = 256
+        self.mapping = nn.Linear(256, hidden_states)
+        self.bn = nn.BatchNorm1d(hidden_states)
+
+    def forward(self, x: torch.Tensor, flag: str = "unsupervised") -> torch.Tensor:
+        if x.ndim == 4 and x.shape[1] == 1:
+            x = x.squeeze(1).permute(0, 2, 1)
+        h = self.encoder(x)
+        if flag == "supervised":
+            return h
+        return self.bn(self.mapping(h))
+
+
+class AutoFiUTHARParallel(nn.Module):
+    """Two-stream UT-HAR encoder + classifier head, mirroring AutoFiParallel."""
+
+    def __init__(self, num_classes: int = 7, hidden_states: int = 256) -> None:
+        super().__init__()
+        self.encoder_1 = AutoFiUTHAREncoder(hidden_states=hidden_states)
+        self.encoder_2 = AutoFiUTHAREncoder(hidden_states=hidden_states)
+        self.classifier = nn.Sequential(
+            nn.Linear(self.encoder_1.feat_dim, 128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128, num_classes),
+        )
+
+    def forward(
+        self, x1: torch.Tensor, x2: torch.Tensor, flag: str = "unsupervised"
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        h1 = self.encoder_1(x1, flag=flag)
+        h2 = self.encoder_2(x2, flag=flag)
+        if flag == "supervised":
+            return self.classifier(h1), self.classifier(h2)
+        return h1, h2
+
+
+def gaussian_noise_uthar(x: torch.Tensor, epsilon: float) -> torch.Tensor:
+    """AutoFi gaussian noise per self_supervised.py::gaussian_noise."""
+    noise = torch.normal(mean=1.0, std=2.0, size=x.shape, device=x.device, dtype=x.dtype)
+    return x + epsilon * noise
+
+
+def pretrain_autofi_uthar(
+    model: AutoFiUTHARParallel,
+    loader: DataLoader,
+    *,
+    epochs: int,
+    lr: float = 1e-3,
+    weight_decay: float = 1.5e-6,
+    tau: float = 1.0,
+    lam1: float = 0.0,
+    lam2: float = 0.5,
+    device: str = "cpu",
+    eps_view1_range: tuple[float, float] = (0.0, 2.0),
+    eps_view2_range: tuple[float, float] = (0.1, 2.0),
+    log_every: int = 10,
+) -> list[float]:
+    import random as _random
+
+    model = model.to(device)
+    model.train()
+    criterion = AutoFiGSSLoss(tau=tau, lam1=lam1, lam2=lam2)
+    optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    history: list[float] = []
+    for epoch in range(epochs):
+        total = 0.0
+        n = 0
+        for batch in loader:
+            x = batch[0] if isinstance(batch, (list, tuple)) else batch
+            x = x.to(device).float()
+            eps1 = _random.uniform(*eps_view1_range)
+            eps2 = _random.uniform(*eps_view2_range)
+            x1 = gaussian_noise_uthar(x, eps1)
+            x2 = gaussian_noise_uthar(x, eps2)
+            feat1, feat2 = model(x1, x2, flag="unsupervised")
+            losses = criterion(feat1, feat2)
+            loss = losses["final-kde"]
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+            total += float(loss.item())
+            n += 1
+        avg = total / max(1, n)
+        history.append(avg)
+        if log_every and (epoch + 1) % log_every == 0:
+            print(f"[autofi-uthar-ssl] epoch {epoch+1}/{epochs} final-kde={avg:.4f}")
+    return history
+
+
+def linear_probe_autofi_uthar(
+    model: AutoFiUTHARParallel,
+    train_loader: DataLoader,
+    test_loader: DataLoader,
+    *,
+    epochs: int,
+    lr: float = 1e-3,
+    weight_decay: float = 1e-5,
+    device: str = "cpu",
+) -> dict[str, float]:
+    """AutoFi paper §IV-C K-shot calibration via linear probe."""
+    model = model.to(device)
+    optim = torch.optim.Adam(
+        model.classifier.parameters(), lr=lr, weight_decay=weight_decay
+    )
+    ce = nn.CrossEntropyLoss()
+    for _ in range(epochs):
+        model.train()
+        for x, y in train_loader:
+            x = x.to(device).float()
+            y = y.to(device).long()
+            y1, y2 = model(x, x, flag="supervised")
+            loss = ce(y1, y) + ce(y2, y)
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+    model.eval()
+    correct_1 = correct_2 = total = 0
+    with torch.no_grad():
+        for x, y in test_loader:
+            x = x.to(device).float()
+            y = y.to(device).long()
+            y1, y2 = model(x, x, flag="supervised")
+            correct_1 += int((y1.argmax(dim=1) == y).sum().item())
+            correct_2 += int((y2.argmax(dim=1) == y).sum().item())
+            total += int(y.numel())
+    return {
+        "accuracy_branch1": correct_1 / max(1, total),
+        "accuracy_branch2": correct_2 / max(1, total),
+        "accuracy": max(correct_1, correct_2) / max(1, total),
+    }
+
+
+def run_autofi_uthar(
+    *,
+    seed: int,
+    ssl_epochs: int = 100,
+    probe_epochs: int = 300,
+    batch_size: int = 64,
+    k_shot: int = 20,
+    ut_har_root: str = "data/ut_har/UT_HAR",
+    cache_dir: str = "data/widar3/cache",
+) -> float:
+    """Single-seed AutoFi run on UT-HAR. Returns top-1 accuracy on the test set.
+
+    Paper §IV-C protocol: SSL pre-train on full UT-HAR train; K-shot
+    calibration (K=20 -> 0.788 in paper Fig. 4) draws ``K`` labeled samples
+    per class from train; eval on the canonical 500-sample test set.
+    """
+    import random
+    import numpy as np
+    from .ut_har import NUM_UT_HAR_CLASSES, UTHARDataset, ut_har_k_shot_indices
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    train_ds = UTHARDataset(
+        "train", root=ut_har_root, cache_path=f"{cache_dir}/ut_har-train.pt"
+    )
+    test_ds = UTHARDataset(
+        "test", root=ut_har_root, cache_path=f"{cache_dir}/ut_har-test.pt"
+    )
+    train_labels = train_ds._y.numpy()
+    k_idx = ut_har_k_shot_indices(
+        train_labels, k=k_shot, num_classes=NUM_UT_HAR_CLASSES, seed=seed
+    )
+    probe_train_ds = UTHARDataset(
+        "train",
+        root=ut_har_root,
+        indices=k_idx.tolist(),
+        cache_path=f"{cache_dir}/ut_har-train.pt",
+    )
+    print(
+        f"[autofi-uthar] ssl_n={len(train_ds)} probe_train_n={len(probe_train_ds)} "
+        f"test_n={len(test_ds)} k_shot={k_shot}"
+    )
+
+    ssl_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
+    probe_train_loader = DataLoader(probe_train_ds, batch_size=batch_size, shuffle=True)
+    probe_test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+
+    model = AutoFiUTHARParallel(num_classes=NUM_UT_HAR_CLASSES, hidden_states=256)
+    pretrain_autofi_uthar(model, ssl_loader, epochs=ssl_epochs, device=device)
+    metrics = linear_probe_autofi_uthar(
+        model, probe_train_loader, probe_test_loader, epochs=probe_epochs, device=device
+    )
+    print(
+        f"[autofi-uthar] probe acc branch1={metrics['accuracy_branch1']:.4f} "
+        f"branch2={metrics['accuracy_branch2']:.4f} max={metrics['accuracy']:.4f}"
+    )
+    return float(metrics["accuracy"])

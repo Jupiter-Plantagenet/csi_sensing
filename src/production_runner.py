@@ -72,6 +72,49 @@ def _josiah_mae() -> Callable[..., float]:
     return runner
 
 
+def _josiah_autofi_uthar() -> Callable[..., float]:
+    from src.slices.josiah.autofi import run_autofi_uthar
+
+    def runner(*, seed: int, epochs: int, batch_size: int, cache_dir: str, ut_har_root: str = "data/ut_har/UT_HAR", **_: dict) -> float:
+        return run_autofi_uthar(
+            seed=seed,
+            ssl_epochs=epochs,
+            probe_epochs=300,
+            batch_size=batch_size,
+            cache_dir=cache_dir,
+            ut_har_root=ut_har_root,
+        )
+
+    return runner
+
+
+def _josiah_capc(pretrain_env: str = "home", eval_env: str = "home") -> Callable[..., float]:
+    from src.slices.josiah.capc import run_capc
+
+    def runner(
+        *,
+        seed: int,
+        epochs: int,
+        batch_size: int,
+        cache_dir: str,
+        signfi_root: str = "data",
+        k_shot: int = 10,
+        **_: dict,
+    ) -> float:
+        return run_capc(
+            seed=seed,
+            ssl_epochs=epochs,
+            batch_size=batch_size,
+            cache_dir=cache_dir,
+            data_root=signfi_root,
+            k_shot=k_shot,
+            pretrain_env=pretrain_env,
+            eval_env=eval_env,
+        )
+
+    return runner
+
+
 def _george(aug: str) -> Callable[..., float]:
     from src.slices.george.run import main
 
@@ -105,6 +148,9 @@ METHODS: dict[str, tuple[str, Callable[..., float], str, str]] = {
     "bvp-simclr-handcrafted": ("josiah", _josiah_bvp("simclr-handcrafted"), "cross-subject-bvp", "project-baseline"),
     "autofi": ("josiah", _josiah_autofi(), "sensefi-bvp", "published-baseline"),
     "mae": ("josiah", _josiah_mae(), "cross-subject-bvp", "published-baseline"),
+    "capc": ("josiah", _josiah_capc("home", "home"), "signfi-home", "published-baseline"),
+    "capc-lab-to-home": ("josiah", _josiah_capc("lab", "home"), "signfi-lab-to-home", "published-baseline"),
+    "autofi-uthar": ("josiah", _josiah_autofi_uthar(), "ut-har", "published-baseline"),
     "doppler": ("george", _george("doppler"), "cross-subject", "proposed-method"),
     "static-perturb": ("chigozie", _chigozie("simclr-static-perturb"), "cross-environment", "proposed-method"),
     "coherent-mask": ("ihunanya", _ihunanya("simclr-coherent-mask"), "cross-subject", "proposed-method"),
@@ -114,6 +160,8 @@ METHODS: dict[str, tuple[str, Callable[..., float], str, str]] = {
 }
 
 BVP_METHODS = {"bvp-supervised", "bvp-simclr-trivial", "bvp-simclr-handcrafted", "autofi", "mae"}
+SIGNFI_METHODS = {"capc", "capc-lab-to-home"}
+UT_HAR_METHODS = {"autofi-uthar"}
 
 
 def run_method(
@@ -135,10 +183,28 @@ def run_method(
         raise ValueError(f"unknown method {method!r}; choose from {sorted(METHODS)}")
     owner, fn, split, method_kind = METHODS[method]
     is_bvp = method in BVP_METHODS
+    is_signfi = method in SIGNFI_METHODS
+    is_ut_har = method in UT_HAR_METHODS
     date = datetime.now().strftime("%Y-%m-%d")
     result_dirs: list[Path] = []
     for seed in seeds:
-        if is_bvp:
+        if is_ut_har:
+            common = {
+                "seed": seed,
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "cache_dir": cache_dir,
+                "ut_har_root": data_root,
+            }
+        elif is_signfi:
+            common = {
+                "seed": seed,
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "cache_dir": cache_dir,
+                "signfi_root": data_root,
+            }
+        elif is_bvp:
             common = {
                 "seed": seed,
                 "epochs": epochs,
@@ -161,7 +227,24 @@ def run_method(
             if owner == "chigozie":
                 common["test_dates"] = test_dates or ["20181128"]
         acc = fn(**common)
-        if is_bvp:
+        if is_ut_har:
+            audit = {
+                "dataset": "ut-har",
+                "num_classes": 7,
+                "train_n": 3977,
+                "val_n": 496,
+                "test_n": 500,
+                "input_shape": [1, 250, 90],
+            }
+        elif is_signfi:
+            audit = {
+                "dataset": "signfi",
+                "pretrain_env": "lab" if method == "capc-lab-to-home" else "home",
+                "eval_env": "home",
+                "num_classes": 276,
+                "instances_per_class": 10,
+            }
+        elif is_bvp:
             from src.slices.josiah.widar_bvp import audit_bvp_split
 
             if method == "autofi":
@@ -181,12 +264,26 @@ def run_method(
                 test_dates=test_dates,
             )
         result_dir = Path(results_root) / f"{date}-{owner}-{method}-seed{seed}"
-        if is_bvp and method == "autofi":
+        if is_ut_har:
+            chance = 1.0 / 7.0
+            representation_tag = "ut-har-csi-amplitude"
+            time_steps_tag = "ut-har-1x250x90"
+        elif is_signfi:
+            chance = 1.0 / 276.0
+            representation_tag = "signfi-csi-amplitude"
+            time_steps_tag = "signfi-3x30x200"
+        elif is_bvp and method == "autofi":
             chance = 1.0 / 22.0
+            representation_tag = "bvp"
+            time_steps_tag = "bvp-22x20x20"
         elif is_bvp:
             chance = 1.0 / 6.0
+            representation_tag = "bvp"
+            time_steps_tag = "bvp-22x20x20"
         else:
             chance = 1.0 / 6.0
+            representation_tag = representation
+            time_steps_tag = time_steps
         write_result_bundle(
             result_dir,
             config={
@@ -195,14 +292,14 @@ def run_method(
                 "seed": seed,
                 "epochs": epochs,
                 "batch_size": batch_size,
-                "representation": "bvp" if is_bvp else representation,
-                "time_steps": "bvp-22x20x20" if is_bvp else time_steps,
-                "max_files": None if is_bvp else max_files,
+                "representation": representation_tag,
+                "time_steps": time_steps_tag,
+                "max_files": None if (is_bvp or is_signfi or is_ut_har) else max_files,
                 "split": split,
                 "test_dates": test_dates,
                 "bvp_root": bvp_root if is_bvp else None,
                 "method_kind": method_kind,
-                "counts_as_published_reproduction": method == "autofi",
+                "counts_as_published_reproduction": method in ("autofi", "capc", "capc-lab-to-home", "mae", "autofi-uthar"),
             },
             metrics={"accuracy": acc, "chance": chance},
             notes=(
@@ -218,7 +315,11 @@ def run_method(
 
     agg = aggregate_metric(result_dirs, "accuracy")
     aggregate_dir = Path(results_root) / f"{date}-{owner}-{method}-aggregate"
-    if is_bvp:
+    if is_ut_har:
+        agg_audit = audit
+    elif is_signfi:
+        agg_audit = audit
+    elif is_bvp:
         from src.slices.josiah.widar_bvp import audit_bvp_split
 
         if method == "autofi":
@@ -242,14 +343,14 @@ def run_method(
             "seeds": seeds,
             "epochs": epochs,
             "batch_size": batch_size,
-            "representation": "bvp" if is_bvp else representation,
-            "time_steps": "bvp-22x20x20" if is_bvp else time_steps,
-            "max_files": None if is_bvp else max_files,
+            "representation": representation_tag,
+            "time_steps": time_steps_tag,
+            "max_files": None if (is_bvp or is_signfi or is_ut_har) else max_files,
             "split": split,
             "test_dates": test_dates,
             "bvp_root": bvp_root if is_bvp else None,
             "method_kind": method_kind,
-            "counts_as_published_reproduction": method == "autofi",
+            "counts_as_published_reproduction": method in ("autofi", "capc", "capc-lab-to-home", "mae", "autofi-uthar"),
         },
         metrics=agg,
         notes=f"# {method} aggregate\n\nMean/std over saved seed runs.",
@@ -276,13 +377,21 @@ def main() -> None:
     parser.add_argument("--results-root", default="results")
     parser.add_argument("--test-date", action="append", dest="test_dates", default=None)
     parser.add_argument("--bvp-root", default="data/widar3/Widardata")
+    parser.add_argument("--signfi-root", default="data")
+    parser.add_argument("--ut-har-root", default="data/ut_har/UT_HAR")
     args = parser.parse_args()
+    if args.method in SIGNFI_METHODS:
+        effective_data_root = args.signfi_root
+    elif args.method in UT_HAR_METHODS:
+        effective_data_root = args.ut_har_root
+    else:
+        effective_data_root = args.data_root
     out = run_method(
         args.method,
         seeds=_parse_int_csv(args.seeds),
         epochs=args.epochs,
         batch_size=args.batch_size,
-        data_root=args.data_root,
+        data_root=effective_data_root,
         cache_dir=args.cache_dir,
         representation=args.representation,
         time_steps=args.time_steps,
