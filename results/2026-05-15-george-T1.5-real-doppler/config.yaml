@@ -1,0 +1,25 @@
+slice: george
+tracer_bullet: T1.5
+kind: real-cross-subject
+seed: 42
+epochs: 300
+batch_size: 64
+augmentation: doppler_warp
+augmentation_params:
+  factor_range: [0.7, 1.4]
+encoder:
+  type: TinyCNN
+  in_channels: 90
+  feature_dim: 128
+ssl:
+  type: SimCLR
+  projection_dim: 64
+  temperature: 0.5
+  lr: 0.001
+data:
+  source: data/widar3/raw
+  loader: Widar3CrossSubject
+  test_subjects: [1, 2, 3, 4]
+  receivers: [1]
+  time_steps: 100
+  num_classes: 6
