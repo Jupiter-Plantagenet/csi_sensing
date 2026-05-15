@@ -17,6 +17,10 @@ env/
 *.secret
 credentials.json
 
+# Reference papers dropped into the workspace root — local-only,
+# we use them as input for implementation but don't redistribute.
+*.pdf
+
 # Packaging / tooling caches
 *.egg-info/
 .pytest_cache/
