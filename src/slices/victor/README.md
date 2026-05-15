@@ -2,7 +2,7 @@
 
 Per `docs/08-team-work-plan.md` §5 and `docs/09-execution-roadmap.md` §2.2.
 
-**Theme.** Decompose a raw-CSI sample into a *static* component (the slowly-varying contribution from walls, furniture, ceiling — the room) and a *dynamic* component (the fast-varying contribution from the moving person). Replace the static component with one from a different sample to simulate "the same activity in a different room." Tested on cross-subject + interaction term, the most direct test of room-invariance.
+**Theme.** Do physics-informed augmentation effects compose linearly? The deck flags "isolating effects" as a difficulty. This slice tests it directly using **Doppler-aware time warping + coherence-aware subcarrier masking** — two of the four physics-informed augmentations, operating on orthogonal axes (time and frequency), both reimplemented in this slice's directory for full independence from Slices 1 and 4.
 
 Run the smoke test:
 
