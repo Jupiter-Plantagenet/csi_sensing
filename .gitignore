@@ -48,3 +48,6 @@ data/
 *.ckpt
 *.pt
 wandb/
+# Per-run stdout dumps (often 100k+ lines of csiread progress output) are
+# kept locally for debugging but never committed.
+results/*/stdout.log

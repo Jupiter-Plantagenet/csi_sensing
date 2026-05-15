@@ -169,12 +169,14 @@ class Widar3CrossEnvironment(Dataset):
         time_steps: int = CSI_T,
         num_classes: int = NUM_CLASSES,
         cache_path: str | Path | None = None,
+        receivers: list[int] | None = None,
     ) -> None:
         self.root = Path(root)
         self.train = train
         self.test_dates = list(test_dates) if test_dates else []
         self.time_steps = time_steps
         self.num_classes = num_classes
+        self.receivers = list(self.DEFAULT_RECEIVERS if receivers is None else receivers)
         self.cache_path = Path(cache_path) if cache_path else None
 
         cache_meta = {
@@ -182,6 +184,7 @@ class Widar3CrossEnvironment(Dataset):
             "test_dates": sorted(self.test_dates),
             "time_steps": self.time_steps,
             "num_classes": self.num_classes,
+            "receivers": sorted(self.receivers),
         }
 
         if self.cache_path is not None and self.cache_path.exists():
@@ -202,6 +205,7 @@ class Widar3CrossEnvironment(Dataset):
         else:
             items = [it for it in items if it[2] in self.test_dates]
         items = [it for it in items if 1 <= it[1]["gesture"] <= self.num_classes]
+        items = [it for it in items if it[1]["receiver"] in self.receivers]
 
         if len(items) == 0:
             raise RuntimeError(
