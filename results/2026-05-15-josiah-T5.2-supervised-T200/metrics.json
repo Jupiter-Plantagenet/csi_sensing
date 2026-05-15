@@ -1,0 +1,13 @@
+{
+  "slice": "josiah",
+  "tracer_bullet": "T5.2",
+  "kind": "real-cross-subject-diagnostic",
+  "seed": 42,
+  "epochs": 50,
+  "batch_size": 64,
+  "time_steps": 200,
+  "train_loss_first": 1.7175,
+  "train_loss_last": 1.0327,
+  "test_top1_accuracy": 0.183,
+  "chance": 0.167
+}

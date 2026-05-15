@@ -1,0 +1,22 @@
+{
+  "slice": "josiah",
+  "tracer_bullet": "T5.4",
+  "kind": "real-cross-subject",
+  "method": "AutoFi-GSS",
+  "seed": 42,
+  "epochs": 300,
+  "batch_size": 64,
+  "dataset": {
+    "train_n": 11249,
+    "test_n": 27574,
+    "test_subjects": [1, 2, 3, 4],
+    "receivers": [1]
+  },
+  "gss_params": 2397068,
+  "loss_first": 0.4298,
+  "loss_last": 0.0,
+  "loss_collapsed_at_epoch": 2,
+  "linear_probe_accuracy": 0.174,
+  "chance": 0.167,
+  "note": "Degenerate-fixed-point collapse: all three loss terms simultaneously zero after epoch 2. Encoder effectively at near-init for the probe."
+}
