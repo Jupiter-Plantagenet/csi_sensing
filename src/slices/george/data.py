@@ -179,6 +179,7 @@ class Widar3CrossSubject(Dataset):
     """
 
     DEFAULT_TEST_SUBJECTS: list[int] = [1, 2, 3, 4]
+    DEFAULT_RECEIVERS: list[int] = [1]
 
     def __init__(
         self,
@@ -188,6 +189,7 @@ class Widar3CrossSubject(Dataset):
         time_steps: int = CSI_T,
         num_classes: int = NUM_CLASSES,
         cache_path: str | Path | None = None,
+        receivers: list[int] | None = None,
     ) -> None:
         self.root = Path(root)
         self.train = train
@@ -196,6 +198,7 @@ class Widar3CrossSubject(Dataset):
         )
         self.time_steps = time_steps
         self.num_classes = num_classes
+        self.receivers = list(self.DEFAULT_RECEIVERS if receivers is None else receivers)
         self.cache_path = Path(cache_path) if cache_path else None
 
         # Cache stores the constructor args alongside (x, y) so a cache built
@@ -207,6 +210,7 @@ class Widar3CrossSubject(Dataset):
             "test_subjects": sorted(self.test_subjects),
             "time_steps": self.time_steps,
             "num_classes": self.num_classes,
+            "receivers": sorted(self.receivers),
         }
 
         if self.cache_path is not None and self.cache_path.exists():
@@ -231,6 +235,10 @@ class Widar3CrossSubject(Dataset):
         # Optionally restrict to the first num_classes gesture IDs (1-indexed
         # in Widar3.0; map down to 0-indexed labels).
         items = [it for it in items if 1 <= it[1]["gesture"] <= self.num_classes]
+        # Receiver subsample: each gesture instance is recorded on 6 receivers
+        # (-r1..-r6). They are different views of the same gesture; keeping
+        # all 6 6x's the file count and memory cost. Default keeps only r1.
+        items = [it for it in items if it[1]["receiver"] in self.receivers]
 
         if len(items) == 0:
             raise RuntimeError(

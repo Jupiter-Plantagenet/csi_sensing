@@ -88,6 +88,7 @@ def test_widar3_cache_rejects_mismatched_metadata(tmp_path):
                 "test_subjects": [1, 2, 3, 4],
                 "time_steps": 4,
                 "num_classes": 6,
+                "receivers": [1],
             },
         },
         cache_path,
