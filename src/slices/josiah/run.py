@@ -1,14 +1,19 @@
 """End-to-end run for Slice 5.
 
-T5.1 (default) wires StubCSI -> TinyCNN encoder -> linear classifier ->
-cross-entropy training -> top-1 accuracy. Stub data, accuracy at chance.
+Three baselines wired through `--mode`:
 
-T5.2 adds the `--real` flag to swap in `Widar3CrossSubject`. The same
-training and eval code then produces a defensible cross-subject accuracy.
+- `mode=supervised` (T5.1 / T5.2): cross-entropy on the full classifier.
+- `mode=simclr-trivial` (T5.3): SimCLR pre-train with `random_crop` only,
+  then frozen-encoder linear probe.
+- `mode=simclr-handcrafted` (T5.6): SimCLR pre-train with the
+  hand-crafted-augmentation baseline (added in T5.6).
+
+Each mode supports `--real` to swap stub data for real Widar3.0 cross-subject.
 
 Run:
-    python -m src.slices.josiah.run                     # stub data (T5.1)
-    python -m src.slices.josiah.run --real --epochs 10  # real data (T5.2)
+    python -m src.slices.josiah.run                                   # supervised stub
+    python -m src.slices.josiah.run --real --epochs 10                # supervised real
+    python -m src.slices.josiah.run --mode simclr-trivial --real      # T5.3 real
 """
 
 from __future__ import annotations
@@ -20,9 +25,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from .augmentations import random_crop
 from .data import CSI_A, CSI_S, NUM_CLASSES, StubCSI, Widar3CrossSubject
-from .encoder import SupervisedClassifier, count_parameters
-from .eval import evaluate, train_supervised
+from .encoder import SupervisedClassifier, TinyCNN, count_parameters
+from .eval import evaluate, linear_probe, train_supervised
+from .ssl import SimCLR, pretrain_simclr
 
 
 def set_seed(seed: int) -> None:
@@ -31,7 +38,29 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
 
 
+def _make_datasets(
+    real: bool, seed: int, data_root: str, cache_dir: str
+) -> tuple[torch.utils.data.Dataset, torch.utils.data.Dataset]:
+    if real:
+        train_ds = Widar3CrossSubject(
+            root=data_root, train=True, cache_path=f"{cache_dir}/josiah_train.pt"
+        )
+        test_ds = Widar3CrossSubject(
+            root=data_root, train=False, cache_path=f"{cache_dir}/josiah_test.pt"
+        )
+        print(
+            f"[josiah] real Widar3.0 cross-subject; "
+            f"train={len(train_ds)}, test={len(test_ds)}"
+        )
+    else:
+        train_ds = StubCSI(num_samples=10, seed=seed)
+        test_ds = StubCSI(num_samples=10, seed=seed + 1)
+        print(f"[josiah] stub data; train={len(train_ds)}, test={len(test_ds)}")
+    return train_ds, test_ds
+
+
 def main(
+    mode: str = "supervised",
     seed: int = 42,
     epochs: int = 2,
     batch_size: int = 4,
@@ -42,72 +71,80 @@ def main(
     set_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if real:
-        train_ds = Widar3CrossSubject(
-            root=data_root,
-            train=True,
-            cache_path=f"{cache_dir}/josiah_train.pt",
-        )
-        test_ds = Widar3CrossSubject(
-            root=data_root,
-            train=False,
-            cache_path=f"{cache_dir}/josiah_test.pt",
-        )
-        print(
-            f"[T5.2] real Widar3.0 cross-subject; "
-            f"train={len(train_ds)}, test={len(test_ds)}"
-        )
-    else:
-        train_ds = StubCSI(num_samples=10, seed=seed)
-        test_ds = StubCSI(num_samples=10, seed=seed + 1)
-        print(f"[T5.1] stub data; train={len(train_ds)}, test={len(test_ds)}")
-
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    train_ds, test_ds = _make_datasets(real, seed, data_root, cache_dir)
+    train_loader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, drop_last=(mode != "supervised")
+    )
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
-    model = SupervisedClassifier(
-        in_channels=CSI_S * CSI_A, num_classes=NUM_CLASSES, feature_dim=128
-    )
-    print(f"[josiah] model params: {count_parameters(model)}")
+    if mode == "supervised":
+        model = SupervisedClassifier(
+            in_channels=CSI_S * CSI_A, num_classes=NUM_CLASSES, feature_dim=128
+        )
+        print(f"[josiah] supervised model params: {count_parameters(model)}")
+        losses = train_supervised(
+            model, train_loader, epochs=epochs, lr=1e-3, device=device
+        )
+        print(f"[josiah] train losses: {[round(loss, 4) for loss in losses]}")
+        acc = evaluate(model, test_loader, device=device)
+        print(f"[josiah] supervised top-1 accuracy: {acc:.3f}")
+        return acc
 
-    losses = train_supervised(
-        model, train_loader, epochs=epochs, lr=1e-3, device=device
-    )
-    print(f"[josiah] train losses: {[round(loss, 4) for loss in losses]}")
+    if mode == "simclr-trivial":
+        encoder = TinyCNN(in_channels=CSI_S * CSI_A, feature_dim=128)
+        print(f"[T5.3] encoder params: {count_parameters(encoder)}")
+        ssl_model = SimCLR(encoder, feature_dim=128, projection_dim=64)
+        losses = pretrain_simclr(
+            ssl_model,
+            train_loader,
+            epochs=epochs,
+            lr=1e-3,
+            temperature=0.5,
+            augment_fn=random_crop,
+            device=device,
+        )
+        print(f"[T5.3] SSL pre-train losses: {[round(loss, 4) for loss in losses]}")
 
-    acc = evaluate(model, test_loader, device=device)
-    chance = 1.0 / NUM_CLASSES
-    tag = "T5.2" if real else "T5.1"
-    print(f"[{tag}] supervised top-1 accuracy: {acc:.3f} (chance ~ {chance:.3f})")
-    return acc
+        # Linear probe on the frozen encoder
+        probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
+        acc = linear_probe(
+            ssl_model.encoder,
+            probe_train_loader,
+            test_loader,
+            device=device,
+            seed=seed,
+        )
+        print(f"[T5.3] linear-probe accuracy: {acc:.3f}")
+        return acc
+
+    raise ValueError(f"unknown mode: {mode!r}")
 
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
+    p.add_argument(
+        "--mode",
+        choices=["supervised", "simclr-trivial"],
+        default="supervised",
+        help="Baseline mode. T5.6's simclr-handcrafted lands later.",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--epochs", type=int, default=2)
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument(
         "--real",
         action="store_true",
-        help="Use real Widar3.0 data (T5.2); default is stub (T5.1).",
+        help="Use real Widar3.0 data; default is stub.",
     )
-    p.add_argument(
-        "--data-root",
-        default="data/widar3/raw",
-        help="Directory containing Widar3.0 .dat files (recursive).",
-    )
-    p.add_argument(
-        "--cache-dir",
-        default="data/widar3/cache",
-        help="Directory for cached parsed tensors.",
-    )
+    p.add_argument("--data-root", default="data/widar3/raw")
+    p.add_argument("--cache-dir", default="data/widar3/cache")
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
     main(
+        mode=args.mode,
         seed=args.seed,
         epochs=args.epochs,
         batch_size=args.batch_size,
