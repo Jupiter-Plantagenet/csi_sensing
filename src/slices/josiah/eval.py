@@ -1,18 +1,22 @@
-"""Supervised train + accuracy eval for Slice 5.
+"""Evaluation routines for Slice 5.
 
-The Slice 5 supervised baseline trains a `SupervisedClassifier` end-to-end
-with cross-entropy against the gesture label. No SSL pre-training, no
-augmentation other than what's needed to batch the data. This is the floor
-of the comparison-to-conventional-solutions: every SSL method we report
-later has to beat the supervised baseline to be worth anything.
+Two protocols, both in the project conventions:
 
-`train_supervised` returns the per-epoch training-loss trajectory; `evaluate`
-returns the test-set classification accuracy.
+- **Supervised** (`train_supervised` + `evaluate`): cross-entropy on the
+  full classifier, reported via top-1 test accuracy. The supervised
+  baseline (T5.2) uses this and only this.
+
+- **Linear probe** (`linear_probe`): freeze the SSL-pre-trained encoder,
+  fit a logistic-regression classifier on its features, return test-set
+  accuracy. Used by every SSL row (T5.3 trivial-aug, T5.6 hand-crafted-aug,
+  T5.4 AutoFi, T5.5 CAPC).
 """
 
 from __future__ import annotations
 
+import numpy as np
 import torch
+from sklearn.linear_model import LogisticRegression
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -68,3 +72,47 @@ def evaluate(
     if total == 0:
         return 0.0
     return correct / total
+
+
+@torch.no_grad()
+def extract_features(
+    encoder: nn.Module,
+    loader: DataLoader,
+    device: str = "cpu",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Run the (frozen) encoder over `loader`, returning feature/label arrays."""
+    encoder.eval()
+    encoder.to(device)
+    features: list[np.ndarray] = []
+    labels: list[np.ndarray] = []
+    for batch in loader:
+        x, y = batch
+        x = x.to(device).float()
+        x = reshape_csi_for_encoder(x)
+        h = encoder(x)
+        features.append(h.cpu().numpy())
+        labels.append(np.asarray(y))
+    return np.concatenate(features, axis=0), np.concatenate(labels, axis=0)
+
+
+def linear_probe(
+    encoder: nn.Module,
+    train_loader: DataLoader,
+    test_loader: DataLoader,
+    *,
+    device: str = "cpu",
+    max_iter: int = 1000,
+    seed: int = 42,
+) -> float:
+    """Fit a linear classifier on frozen-encoder features; return test accuracy.
+
+    Matches Slice 1's protocol: scikit-learn's LogisticRegression on the
+    encoder's `(B, feature_dim)` outputs, evaluated as top-1 accuracy.
+    """
+    train_x, train_y = extract_features(encoder, train_loader, device=device)
+    test_x, test_y = extract_features(encoder, test_loader, device=device)
+
+    clf = LogisticRegression(max_iter=max_iter, random_state=seed)
+    clf.fit(train_x, train_y)
+    pred = clf.predict(test_x)
+    return float(np.mean(pred == test_y))
