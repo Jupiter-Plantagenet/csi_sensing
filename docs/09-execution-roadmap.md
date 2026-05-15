@@ -5,18 +5,18 @@ This document sequences the work that takes the project from its current state t
 - **Part A** — reproduce the baselines we will compare against (Slice 5), *exactly* as published.
 - **Part B** — run our physics-informed augmentations against those baselines (Slices 1, 2, 4, 6; Slice 3 already done).
 
-The final deliverable is a 6-page ICTC paper at `papers/team/ictc-paper/` (local-only LaTeX, project-tracked figure scripts and writeups), supported by **five tables and one figure** at `papers/team/`:
+The final deliverable is a 6-page ICTC paper at `papers/team/ictc-paper/` (local-only LaTeX, project-tracked figure scripts and writeups), supported by **six figures** at `papers/team/`. The project prefers figures over tables — bar charts, line plots, and curves convey the comparisons more compellingly to reviewers, and small accompanying markdown files hold the underlying numbers + the figure-generation script alongside each figure.
 
-| Artifact | What it shows | Slice owner |
+| Figure (PNG/PDF) | What it shows | Slice contributor(s) |
 |---|---|---|
-| `papers/team/baselines.md` — *reproduction validation* | Reproduced number vs published headline for each baseline, with the gap noted | Slice 5 |
-| `papers/team/comparison.md` — *main results* | 5 baselines + 4 physics-informed augmentations, cross-subject accuracy (mean ± std, 3 seeds) | all slices |
-| `papers/team/cross-domain.md` — *generalization breakdown* | Same rows × cross-subject / cross-environment / cross-position / cross-orientation columns | all slices |
-| `papers/team/label-efficiency.md` — *SSL's value proposition* | Best augs vs hand-crafted baseline across 1%, 5%, 10%, 50%, 100% label fractions | Slice 5 + Slice 1 |
-| `papers/team/composability.md` — *interaction effects* | Doppler, coherence, combined; deltas vs no-aug | Slice 6 |
-| `papers/team/coherence-robustness.png` (figure) | Accuracy vs subcarrier-mask fraction at test time | Slice 4 |
+| `papers/team/baselines-figure.png` | **Reproduction validation.** Paired bar chart per baseline: our reproduced number alongside the published headline, with the gap visually obvious. | Slice 5 |
+| `papers/team/comparison-figure.png` | **Main results.** Grouped bar chart: 5 baselines + 4 physics-informed augmentations × cross-subject accuracy (mean ± std error bars, 3 seeds). | all slices |
+| `papers/team/cross-domain-figure.png` | **Generalization breakdown.** Grouped bar chart: same methods (rows) × four cross-domain splits (cross-subject, cross-environment, cross-position, cross-orientation) as bar groups. Reveals which augmentation helps which axis. | all slices |
+| `papers/team/label-efficiency-figure.png` | **SSL's value proposition.** Line plot: accuracy vs label fraction (1%, 5%, 10%, 50%, 100%) for the best augmentations vs the hand-crafted baseline. | Slice 5 + Slice 1 |
+| `papers/team/composability-figure.png` | **Interaction effects.** Bar chart: Doppler alone, coherence-mask alone, both combined, no-aug baseline; deltas annotated. | Slice 6 |
+| `papers/team/coherence-robustness-figure.png` | **Held-out subcarrier robustness.** Line plot: accuracy vs subcarrier-mask fraction at test time, baseline vs coherence-aware augmentation. | Slice 4 |
 
-Per-slice 1-page writeups at `papers/team/<slice>.md` (Collins's `phase-noise.md` already exists; George's `doppler.md`, Chigozie's `static.md`, Ihunanya's `coherence.md`, Victor's `composability.md` are TODO).
+Each figure is produced by a project-tracked Python script at `src/slices/<owner>/figures.py` (or `papers/team/figures/<figname>.py` for cross-slice integrations). The underlying numbers are committed in a small accompanying markdown file next to each figure (e.g., `papers/team/baselines-figure.md`) so anyone can audit the figure without re-running the experiments. Per-slice 1-page writeups also live at `papers/team/<slice>.md` (Collins's `phase-noise.md` already exists; George's `doppler.md`, Chigozie's `static.md`, Ihunanya's `coherence.md`, Victor's `composability.md` are TODO).
 
 If you have not yet read [`08-team-work-plan.md`](08-team-work-plan.md), read it first. This doc is the *order* in which the work in doc 08 should happen, with concrete sequencing.
 
@@ -28,7 +28,7 @@ If you have not yet read [`08-team-work-plan.md`](08-team-work-plan.md), read it
 
 - Slice 3 (Collins, calibrated phase-noise injection) **complete**: all eight tracer-bullets merged. Code under `src/slices/collins/`, writeup at `papers/team/phase-noise.md`.
 - Slice 1 (George, Doppler-aware time warping) **partial**: T1.1 (scaffold), T1.2 (Widar3.0 cross-subject loader), T1.3 (generic-augmentation baseline functions), T1.4 + T1.5 (Doppler augmentation + sanity test) all merged. T1.6, T1.7, T1.8 remaining (repurposed — see §2.1).
-- Conventions doc 07, work-plan doc 08, AFK plan, cross-domain-drop convention fix all merged.
+- Conventions doc 07, work-plan doc 08, cross-domain-drop convention fix all merged. (The earlier Slice 1 AFK plan has been retired; George + Claude drive execution directly, so the AFK-handoff plan is no longer needed.)
 - Raw Widar3.0 CSI archives downloaded to `data/widar3/raw/` (~80 GB across 15 dates, verified via CRC and a csiread smoke test).
 
 **Not started:**
@@ -60,6 +60,18 @@ Five baselines, each as a separate tracer-bullet PR:
 
 For baselines 3 and 4, success means **reproducing the published headline accuracy on Widar3.0 cross-subject within ~5 pp** (publication-quality tolerance). If we land further out, document the gap and the suspected cause (different evaluation split, undocumented hyperparameters, etc.) in the per-baseline writeup. The reproduction PR contains both our number AND the published number with a citation to the source paper's table.
 
+#### 1.1.1 What each baseline is, in one paragraph
+
+**1. Supervised, no SSL.** The most basic comparison. A CSI sample is fed to the small CNN that's trained from scratch with cross-entropy against the gesture label. No pre-training, no augmentation other than what's needed to batch the data. This tells us "how well does the encoder do with no fancy tricks at all?" — the floor for "what does adding SSL buy you?". Typically this baseline does badly on cross-domain because the model overfits to source-domain quirks.
+
+**2. SimCLR with trivial augmentation.** Same default encoder, but pre-train it with SimCLR (NT-Xent contrastive loss) using just a random temporal crop as the augmentation — no Gaussian noise, no subcarrier masking. Then linear-probe. This isolates "does SSL help at all on CSI, even with the dumbest augmentation?" If the answer is yes, the SSL paradigm itself adds value. If no, we have a problem with our SSL setup that needs fixing before proceeding.
+
+**3. AutoFi (Yang et al. 2023, IEEE IoT Journal).** The first WiFi-specific SSL paper to claim strong cross-domain results. Method: a CNN-LSTM encoder pre-trained with a *geometric* pretext task — apply a known geometric transformation (rotation, time-shift, etc.) to the CSI sample, then have the model predict which transformation was applied. The encoder learns geometry-invariant features that transfer across domains. We reproduce their exact encoder, pretext task, and training schedule on Widar3.0 cross-subject. Our reproduced number sits alongside their published headline in the validation figure.
+
+**4. CAPC (Barahimi et al. 2024, IEEE OJCOMS).** More recent and stronger. Method: combine CPC (contrastive predictive coding — predict future representations of the sequence given the past) with Barlow Twins (a non-contrastive SSL loss that makes the cross-correlation between two views close to the identity matrix). Their encoder is different from AutoFi's. The paper's strongest contribution is its augmentation-ablation analysis. We reproduce CAPC to validate our pipeline against the best-published numbers we know of.
+
+**5. Hand-crafted-aug SimCLR.** Same default encoder. Pre-train with SimCLR using two generic augmentations: additive Gaussian noise (`σ = 0.05`) and random subcarrier mask (drop ~15% of subcarriers). This is the **operational baseline** our physics-informed augmentations must beat. The comparison story for the project is "generic CV-style augmentations vs physics-informed augmentations, same encoder, same SSL, same data, same protocol." If our augmentations beat this baseline, physics matters for the augmentation choice. If not, we've documented an honest negative result.
+
 ### 1.2 Sequenced tracer-bullets for Slice 5
 
 | Tracer | Issue | What ships |
@@ -70,15 +82,16 @@ For baselines 3 and 4, success means **reproducing the published headline accura
 | **T5.4** | #69 | **Exact AutoFi reproduction** — implement their CNN-LSTM encoder, their geometric pretext, their training schedule. 3 seeds on cross-subject. Compare reproduced vs published headline. |
 | **T5.5** | #70 | **Exact CAPC reproduction** — implement their encoder, their CPC + Barlow Twins setup, their schedule. 3 seeds. Compare reproduced vs published. |
 | **T5.6** | #71 | Hand-crafted augmentation baseline (Gaussian + random subcarrier mask) on the default encoder. **3 seeds.** This is the comparison-column row used by Slices 1, 2, 4, 6. |
-| **T5.7** | #72 | Build `papers/team/baselines.md` — reproduction-validation table (reproduced number, published headline, gap, citation) for all 5 baselines × 3 seeds. |
+| **T5.7** | #72 | Build `papers/team/baselines-figure.png` + its companion `baselines-figure.md` (source data, citations, figure-generation script). Paired bar chart per baseline showing reproduced vs published with error bars over 3 seeds. |
 | **T5.8** | #73 | Gap-analysis paragraph identifying which (metric × split) cells are empty across published baselines — these are where our work has the most to contribute. |
 
 ### 1.3 What "done" looks like for Part A
 
-Two artifacts on main:
+Three artifacts on main:
 
-1. `papers/team/baselines.md` — the reproduction-validation table.
-2. The data backing `results/` directories — one per baseline × 3 seeds.
+1. `papers/team/baselines-figure.png` — the reproduction-validation figure (paired bars: reproduced vs published, per baseline).
+2. `papers/team/baselines-figure.md` — companion file with the underlying numbers, citations, and the figure-generation script.
+3. The data backing `results/` directories — one per baseline × 3 seeds.
 
 This unblocks every other slice's comparison column. T5.6's number is the row every Part-B slice compares against.
 
