@@ -22,7 +22,7 @@ from .augmentations import (
     gaussian_then_mask,
     random_subcarrier_mask,
 )
-from .data import CSI_A, CSI_S, NUM_CLASSES, StubCSI
+from .data import CSI_A, CSI_S, NUM_CLASSES, StubCSI, Widar3CrossSubject
 from .encoder import TinyCNN, count_parameters
 from .eval import linear_probe
 from .ssl import SimCLR, pretrain_simclr
@@ -47,6 +47,9 @@ def main(
     epochs: int = 2,
     batch_size: int = 4,
     aug: str = "none",
+    real: bool = False,
+    data_root: str = "data/widar3/raw",
+    cache_dir: str = "data/widar3/cache",
 ) -> float:
     if aug not in AUGMENTATIONS:
         raise ValueError(
@@ -55,9 +58,19 @@ def main(
     set_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    pretrain_ds = StubCSI(num_samples=10, seed=seed)
-    train_ds = StubCSI(num_samples=10, seed=seed + 1)
-    test_ds = StubCSI(num_samples=10, seed=seed + 2)
+    if real:
+        pretrain_ds = Widar3CrossSubject(
+            root=data_root, train=True, cache_path=f"{cache_dir}/george_train.pt"
+        )
+        train_ds = pretrain_ds
+        test_ds = Widar3CrossSubject(
+            root=data_root, train=False, cache_path=f"{cache_dir}/george_test.pt"
+        )
+        print(f"[T1.1] real Widar3.0 cross-subject; train={len(train_ds)}, test={len(test_ds)}")
+    else:
+        pretrain_ds = StubCSI(num_samples=10, seed=seed)
+        train_ds = StubCSI(num_samples=10, seed=seed + 1)
+        test_ds = StubCSI(num_samples=10, seed=seed + 2)
 
     # drop_last=True avoids singleton SimCLR batches: a B=1 batch makes
     # NT-Xent collapse to zero loss after diagonal masking, contributing
@@ -99,6 +112,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--epochs", type=int, default=2)
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument("--aug", choices=sorted(AUGMENTATIONS), default="none")
+    p.add_argument("--real", action="store_true", help="Use real Widar3.0 data.")
+    p.add_argument("--data-root", default="data/widar3/raw")
+    p.add_argument("--cache-dir", default="data/widar3/cache")
     return p.parse_args()
 
 
@@ -109,4 +125,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         batch_size=args.batch_size,
         aug=args.aug,
+        real=args.real,
+        data_root=args.data_root,
+        cache_dir=args.cache_dir,
     )
