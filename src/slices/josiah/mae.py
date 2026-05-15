@@ -419,3 +419,245 @@ def run_mae(
     )
     print(f"[mae] linear-probe acc={acc:.4f}")
     return acc
+
+
+# =============================================================================
+# MAE for UT-HAR — paper-faithful reproduction target.
+# Compare against SSLCSI Table 4c MAE-ViT UT-HAR = 0.843.
+
+
+class UTHARTokenEmbed(nn.Module):
+    """Each time step's 90-dim CSI feature vector becomes one token.
+
+    Input: ``(B, 1, 250, 90)`` (SenseFi UT-HAR shape) or ``(B, 250, 90)``.
+    Output: ``(B, 250, emb_dim)``.
+    """
+
+    def __init__(self, *, num_features: int = 90, emb_dim: int = 192) -> None:
+        super().__init__()
+        self.proj = nn.Linear(num_features, emb_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim == 4 and x.shape[1] == 1:
+            x = x.squeeze(1)
+        return self.proj(x)
+
+
+class UTHARMAEEncoder(nn.Module):
+    def __init__(
+        self,
+        *,
+        num_tokens: int = 250,
+        num_features: int = 90,
+        emb_dim: int = 192,
+        depth: int = 6,
+        num_heads: int = 6,
+    ) -> None:
+        super().__init__()
+        self.num_tokens = num_tokens
+        self.embed = UTHARTokenEmbed(num_features=num_features, emb_dim=emb_dim)
+        self.register_buffer(
+            "pos_embed",
+            _sinusoidal_positional_embedding(num_tokens, emb_dim).unsqueeze(0),
+            persistent=False,
+        )
+        self.blocks = nn.ModuleList(
+            [_TransformerBlock(dim=emb_dim, num_heads=num_heads) for _ in range(depth)]
+        )
+        self.norm = nn.LayerNorm(emb_dim)
+
+    def forward_features(self, x: torch.Tensor) -> torch.Tensor:
+        z = self.embed(x) + self.pos_embed
+        for block in self.blocks:
+            z = block(z)
+        return self.norm(z)
+
+    def forward_masked(
+        self, x: torch.Tensor, mask_ratio: float
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        b = x.shape[0]
+        t = self.num_tokens
+        emb = self.embed(x) + self.pos_embed  # (B, T, D)
+        n_keep = max(1, int(t * (1.0 - mask_ratio)))
+        noise = torch.rand(b, t, device=x.device)
+        ids_shuffle = noise.argsort(dim=1)
+        ids_keep = ids_shuffle[:, :n_keep]
+        ids_restore = ids_shuffle.argsort(dim=1)
+        z_visible = torch.gather(
+            emb, dim=1, index=ids_keep.unsqueeze(-1).expand(-1, -1, emb.shape[-1])
+        )
+        for block in self.blocks:
+            z_visible = block(z_visible)
+        z_visible = self.norm(z_visible)
+        mask = torch.ones(b, t, device=x.device)
+        mask.scatter_(1, ids_keep, 0.0)
+        return z_visible, mask, ids_restore
+
+
+class UTHARMAE(nn.Module):
+    def __init__(
+        self,
+        *,
+        num_features: int = 90,
+        num_tokens: int = 250,
+        emb_dim: int = 192,
+        encoder_depth: int = 6,
+        decoder_dim: int = 96,
+        decoder_depth: int = 2,
+        num_heads: int = 6,
+        mask_ratio: float = 0.75,
+    ) -> None:
+        super().__init__()
+        self.mask_ratio = mask_ratio
+        self.num_features = num_features
+        self.encoder = UTHARMAEEncoder(
+            num_tokens=num_tokens,
+            num_features=num_features,
+            emb_dim=emb_dim,
+            depth=encoder_depth,
+            num_heads=num_heads,
+        )
+        self.decoder = MAEDecoder(
+            num_tokens=num_tokens,
+            token_dim=num_features,
+            emb_dim=emb_dim,
+            decoder_dim=decoder_dim,
+            depth=decoder_depth,
+            num_heads=num_heads,
+        )
+
+    def forward(self, x: torch.Tensor) -> dict:
+        if x.ndim == 4 and x.shape[1] == 1:
+            x_in = x.squeeze(1)  # (B, T, F)
+        else:
+            x_in = x
+        target = x_in  # (B, T, F)
+        z_visible, mask, ids_restore = self.encoder.forward_masked(x, self.mask_ratio)
+        pred = self.decoder(z_visible, ids_restore)
+        loss_full = (pred - target).pow(2).mean(dim=-1)
+        loss = (loss_full * mask).sum() / mask.sum().clamp(min=1.0)
+        return {"loss": loss, "pred": pred, "mask": mask}
+
+
+def pretrain_mae_uthar(
+    model: UTHARMAE,
+    loader: DataLoader,
+    *,
+    epochs: int,
+    lr: float = 1.5e-4,
+    weight_decay: float = 0.05,
+    warmup_epochs: int = 40,
+    device: str = "cpu",
+    log_every: int = 10,
+) -> list[float]:
+    model = model.to(device)
+    optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    history: list[float] = []
+    for epoch in range(epochs):
+        mult = _warmup_cosine_lr(epoch, total_epochs=epochs, warmup_epochs=warmup_epochs)
+        for g in optim.param_groups:
+            g["lr"] = lr * mult
+        model.train()
+        total = 0.0
+        n = 0
+        for batch in loader:
+            x = batch[0] if isinstance(batch, (list, tuple)) else batch
+            x = x.to(device).float()
+            out = model(x)
+            loss = out["loss"]
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+            total += float(loss.item())
+            n += 1
+        history.append(total / max(1, n))
+        if log_every and (epoch + 1) % log_every == 0:
+            print(f"[mae-uthar-ssl] epoch {epoch+1}/{epochs} mse={history[-1]:.4f} lr={lr*mult:.2e}")
+    return history
+
+
+@torch.no_grad()
+def _extract_uthar_features(
+    encoder: UTHARMAEEncoder, loader: DataLoader, device: str
+) -> tuple[np.ndarray, np.ndarray]:
+    encoder.eval().to(device)
+    feats: list[np.ndarray] = []
+    labels: list[np.ndarray] = []
+    for x, y in loader:
+        x = x.to(device).float()
+        z = encoder.forward_features(x)
+        pooled = z.mean(dim=1)
+        feats.append(pooled.cpu().numpy())
+        labels.append(np.asarray(y))
+    return np.concatenate(feats, axis=0), np.concatenate(labels, axis=0)
+
+
+def linear_probe_mae_uthar(
+    encoder: UTHARMAEEncoder,
+    train_loader: DataLoader,
+    test_loader: DataLoader,
+    *,
+    device: str = "cpu",
+    max_iter: int = 1000,
+    seed: int = 42,
+) -> float:
+    tr_x, tr_y = _extract_uthar_features(encoder, train_loader, device)
+    te_x, te_y = _extract_uthar_features(encoder, test_loader, device)
+    clf = LogisticRegression(max_iter=max_iter, random_state=seed).fit(tr_x, tr_y)
+    return float(np.mean(clf.predict(te_x) == te_y))
+
+
+def run_mae_uthar(
+    *,
+    seed: int,
+    epochs: int = 200,
+    batch_size: int = 64,
+    ut_har_root: str = "data/ut_har/UT_HAR",
+    cache_dir: str = "data/widar3/cache",
+    mask_ratio: float = 0.75,
+    emb_dim: int = 192,
+    encoder_depth: int = 6,
+    decoder_depth: int = 2,
+    num_heads: int = 6,
+) -> float:
+    """Single-seed MAE on UT-HAR. Returns top-1 on the test set.
+
+    Target: SSLCSI Table 4c MAE-ViT UT-HAR = 0.843. The 144-config LR/warmup/batch
+    grid that the SSLCSI paper searches is not replicated here; we use He et al.
+    2022 MAE defaults (mask_ratio=0.75, AdamW lr=1.5e-4, 40-epoch warmup).
+    """
+    import random
+    from .ut_har import UTHARDataset, NUM_UT_HAR_CLASSES
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    train_ds = UTHARDataset(
+        "train", root=ut_har_root, cache_path=f"{cache_dir}/ut_har-train.pt"
+    )
+    test_ds = UTHARDataset(
+        "test", root=ut_har_root, cache_path=f"{cache_dir}/ut_har-test.pt"
+    )
+    print(f"[mae-uthar] train_n={len(train_ds)} test_n={len(test_ds)} mask_ratio={mask_ratio}")
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
+    probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+
+    model = UTHARMAE(
+        num_features=90,
+        num_tokens=250,
+        emb_dim=emb_dim,
+        encoder_depth=encoder_depth,
+        decoder_depth=decoder_depth,
+        num_heads=num_heads,
+        mask_ratio=mask_ratio,
+    )
+    pretrain_mae_uthar(model, train_loader, epochs=epochs, device=device)
+    acc = linear_probe_mae_uthar(
+        model.encoder, probe_train_loader, test_loader, device=device, seed=seed
+    )
+    print(f"[mae-uthar] linear-probe acc={acc:.4f}")
+    return acc

@@ -88,6 +88,21 @@ def _josiah_autofi_uthar() -> Callable[..., float]:
     return runner
 
 
+def _josiah_mae_uthar() -> Callable[..., float]:
+    from src.slices.josiah.mae import run_mae_uthar
+
+    def runner(*, seed: int, epochs: int, batch_size: int, cache_dir: str, ut_har_root: str = "data/ut_har/UT_HAR", **_: dict) -> float:
+        return run_mae_uthar(
+            seed=seed,
+            epochs=epochs,
+            batch_size=batch_size,
+            cache_dir=cache_dir,
+            ut_har_root=ut_har_root,
+        )
+
+    return runner
+
+
 def _josiah_capc(pretrain_env: str = "home", eval_env: str = "home") -> Callable[..., float]:
     from src.slices.josiah.capc import run_capc
 
@@ -151,6 +166,7 @@ METHODS: dict[str, tuple[str, Callable[..., float], str, str]] = {
     "capc": ("josiah", _josiah_capc("home", "home"), "signfi-home", "published-baseline"),
     "capc-lab-to-home": ("josiah", _josiah_capc("lab", "home"), "signfi-lab-to-home", "published-baseline"),
     "autofi-uthar": ("josiah", _josiah_autofi_uthar(), "ut-har", "published-baseline"),
+    "mae-uthar": ("josiah", _josiah_mae_uthar(), "ut-har", "published-baseline"),
     "doppler": ("george", _george("doppler"), "cross-subject", "proposed-method"),
     "static-perturb": ("chigozie", _chigozie("simclr-static-perturb"), "cross-environment", "proposed-method"),
     "coherent-mask": ("ihunanya", _ihunanya("simclr-coherent-mask"), "cross-subject", "proposed-method"),
@@ -161,7 +177,7 @@ METHODS: dict[str, tuple[str, Callable[..., float], str, str]] = {
 
 BVP_METHODS = {"bvp-supervised", "bvp-simclr-trivial", "bvp-simclr-handcrafted", "autofi", "mae"}
 SIGNFI_METHODS = {"capc", "capc-lab-to-home"}
-UT_HAR_METHODS = {"autofi-uthar"}
+UT_HAR_METHODS = {"autofi-uthar", "mae-uthar"}
 
 
 def run_method(
