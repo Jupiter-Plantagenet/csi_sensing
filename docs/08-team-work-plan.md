@@ -45,65 +45,30 @@ The team's final paper (covering all six slices) is project-closeout work that G
 
 ### A note on the data
 
-All slices that consume Widar3.0 operate on **raw Channel State Information** from Intel 5300 NICs (the original `.dat` format). The dataset is being downloaded from IEEE DataPort to `data/widar3/raw/` as 15 archives (one per recording-session date), totalling roughly 80 GB. Each `.dat` file parses via `csiread.Intel(...)` to a complex CSI tensor of shape approximately `(T_packets, 30 subcarriers, 3 antennas)` per receiver. Sampling rate is 1000 packets/sec; a gesture instance lasts ~1–2 s. The 15 dates span the three published Widar3.0 environments (classroom, office, hall), enabling genuine cross-environment evaluation for Slice 2. See [`docs/slice-1-afk-plan.md`](slice-1-afk-plan.md) section 6 for the full layout, including the `userN-G-P-O-T-rR.dat` filename schema and the per-slice subset selection.
+All slices that consume Widar3.0 operate on **raw Channel State Information** from Intel 5300 NICs (the original `.dat` format). The dataset is downloaded from IEEE DataPort to `data/widar3/raw/` as 15 archives (one per recording-session date), totalling roughly 80 GB. Each `.dat` file parses via `csiread.Intel(nrxnum=3, ntxnum=1, pl_size=10)` to a complex CSI tensor of shape `(T_packets, 30 subcarriers, 3 antennas, 1)`; squeeze the last dim. Sampling rate is 1000 packets/sec; a gesture instance lasts ~1–2 s. Filename schema: `userN-G-P-O-T-rR.dat` for user-gesture-position-orientation-trial-receiver. The 15 dates span the three published Widar3.0 environments (classroom, office, hall), enabling genuine cross-environment evaluation for Slice 2.
 
 **Slice 3 has a remaining data dependency.** Calibrated phase-noise injection across chipsets needs CSI-Bench (a different dataset, hosted on Kaggle), since Widar3.0 records on a single chipset family (Intel 5300). Slice 3 can prototype the augmentation pipeline on Widar3.0 raw CSI now and report a robustness result; the cross-chipset claim itself awaits CSI-Bench access. The slice's tracer-bullets are written to be incrementally upgradable once that data is in hand.
 
 ---
 
-## 4. Slice 1 — George — Doppler-aware time warping → KICS submission
+## 4. Slice 1 — George — Doppler-aware time warping → contribution to team paper
 
 **Theme.** Stretch the time axis of a raw-CSI sample by a random factor in `[0.7, 1.4]` to simulate the same activity performed at different speeds. Cross-subject is the natural target because subjects vary in gait speed.
 
-**Why this slice for KICS.** Lowest-risk augmentation to implement (no decomposition, no calibration, no spectral estimation). Widar3.0 cross-subject is a public benchmark with published baselines. A clean comparison between Doppler warping and a generic-augmentation baseline produces a 2-page paper with a results table.
+**Why this slice matters.** Lowest-risk augmentation to implement (no decomposition, no calibration, no spectral estimation). Widar3.0 cross-subject is a public benchmark with published baselines. Provides the project's first end-to-end physics-informed augmentation result; serves as the template for slices 2, 4, 6.
 
 **Tracer-bullet issues:**
 
-1. **T1.1 — Scaffold + SimCLR end-to-end with stub data.** Tiny CNN, SimCLR loss, linear probe, 10 stub CSI samples shaped `(T, 30, 3)`. Pipeline runs.
-2. **T1.2 — Real Widar3.0 raw-CSI cross-subject loader.** Parse `.dat` files via `csiread`, filter to canonical 6 gestures + position 1 + orientation 1 + receiver 1, build cross-subject user split.
-3. **T1.3 — Generic-augmentation baseline.** Gaussian noise + random subcarrier mask. Single seed.
-4. **T1.4 — Doppler-aware time warping.** Stretch the time axis by a factor in `[0.7, 1.4]`. Single seed.
-5. **T1.5 — Sanity test.** Synthetic CSI with one known dominant frequency; factor-2 warp halves the dominant frequency (within tolerance).
+1. **T1.1 — Scaffold + SimCLR end-to-end with stub data.** Tiny CNN, SimCLR loss, linear probe, 10 stub CSI samples shaped `(T, 30, 3)`. Pipeline runs. **MERGED.**
+2. **T1.2 — Real Widar3.0 raw-CSI cross-subject loader.** Parse `.dat` files via `csiread`, filter to canonical 6 gestures + position 1 + orientation 1 + receiver 1, build cross-subject user split. **MERGED.**
+3. **T1.3 — Generic-augmentation baseline.** Gaussian noise + random subcarrier mask. Single seed. **MERGED.**
+4. **T1.4 — Doppler-aware time warping.** Stretch the time axis by a factor in `[0.7, 1.4]`. Single seed. **MERGED.**
+5. **T1.5 — Sanity test.** Synthetic CSI with one known dominant frequency; factor-2 warp halves the dominant frequency (within tolerance). **MERGED.**
 6. **T1.6 — Multi-seed comparison.** Three seeds for both baseline and Doppler. Mean ± std. Paired comparison.
-7. **T1.7 — KICS paper draft.** LaTeX/`IEEEtran` two-column draft per the outline below.
-8. **T1.8 — KICS paper polish and submission.** PDF, references, format check, submission.
+7. **T1.7 — Richer Doppler results.** Sweep warp-range and sweep label fractions (1, 5, 10, 50, 100%); 3 seeds each. Output: figures for `papers/team/label-efficiency-figure.png` (Slice 1's contribution to it).
+8. **T1.8 — 1-page writeup at `papers/team/doppler.md`** describing the result, linking to the figures, contributing to the team paper.
 
-**Target venue.** KICS Fall 2026 (deadline ~September 2026). KICS Winter 2027 is the backup.
-
-**AFK execution plan.** [`docs/slice-1-afk-plan.md`](slice-1-afk-plan.md) is the detailed plan for an autonomous Claude session to execute Slice 1 end-to-end while George is away. Includes environment setup, compute strategy, dataset fallbacks, IEEEtran boilerplate, and explicit STOP points. Only relevant if running the slice AFK; teammates writing other slices should skip it.
-
-### KICS paper outline (calibrated against George's prior KICS Winter 2026 paper)
-
-**Working title.** *Towards Physics-Informed Augmentation for Cross-Subject WiFi CSI Sensing: Doppler-Aware Time Warping in Self-Supervised Pre-Training.* (Drop "Towards" if results are strong.)
-
-**Format.** 2 pages, IEEE conference (`IEEEtran`) double-column, English.
-
-**Authors (proposed).** George Chidera Akor, Love Allen Chijioke Ahakonye, Jae Min Lee, Dong-Seong Kim. Same affiliations as the prior paper.
-
-**Index Terms (6–7).** Channel state information, self-supervised learning, Doppler shift, data augmentation, domain generalization, WiFi sensing.
-
-**Abstract (~150 words), bottleneck → observation → present → numbers:**
-
-> *Cross-subject generalization is a known weakness of WiFi channel-state-information (CSI) sensing systems, with reported accuracy drops when test subjects differ from training subjects. Existing self-supervised learning (SSL) approaches use generic data augmentations borrowed from computer vision, which do not reflect the physical phenomena that drive cross-domain shift. We observe that activity speed scales the Doppler component of CSI approximately linearly, a structure that augmentation design has not previously exploited. We present Doppler-aware time warping, a physics-informed augmentation that stretches the time axis of a raw CSI sample by a random factor in [0.7, 1.4] during SimCLR pre-training. On the Widar3.0 cross-subject benchmark with a frozen-encoder linear probe, Doppler-aware time warping improves accuracy by X.X ± Y.Y% over a Gaussian-noise + random-subcarrier-mask baseline across three random seeds.*
-
-**Sections:**
-
-1. **I. Introduction** (~half page). The cross-subject generalization problem; the augmentation gap; one-paragraph contributions list.
-2. **II. Methodology**, two subsections matching the prior paper's A/B pattern:
-   - *II-A. Doppler scaling and the time-warp operation.* Physical relationship; warp formula; one small equation.
-   - *II-B. SSL pipeline integration.* SimCLR setup; encoder backbone; linear-probe protocol. **One architecture figure (Fig. 1)** showing the pipeline with the Doppler-warp module highlighted, in the same visual style as the prior paper's Fig. 1.
-3. **III. Results and Discussion** (~half page). One paragraph framing the experiment, then a Table-II-style comparison: rows are configurations (no aug / Gaussian noise / random subcarrier mask / Gaussian + mask / **Doppler (ours)**), columns are accuracy with mean ± std. Bold our row. One paragraph interpreting honestly — declarative tone, no hedging.
-4. **IV. Conclusion** (~quarter page). Result; three future-work threads (other physics-informed augmentations, composability study, team paper).
-5. **Acknowledgment.** George's standard block (IITP / NRF / MEST / ITRC funding lines), reused verbatim from the prior paper where the grant text matches.
-6. **References.** IEEE numbered, 8–10 entries: AutoFi, CAPC, CIG-MAE, SimCLR, Widar3.0, Xu et al. SSL-for-CSI benchmark, **at least 1 of George's prior KICS/ICAIIC works** (per the prior paper's pattern), domain-generalization survey if space allows.
-
-**Acceptance for T1.8:**
-
-- [ ] PDF renders cleanly under `IEEEtran` two-column.
-- [ ] Hard 2-page limit verified.
-- [ ] Every reference checked (per [`06-using-ai-well.md`](06-using-ai-well.md)).
-- [ ] Acknowledgment text matches the prior paper's wording where reused.
-- [ ] Submission portal upload completed; submission ID logged in `papers/kics-george/notes.md`.
+**Target venue.** ICTC October 2026 (the team paper). The previously planned KICS Fall 2026 submission has been folded into the team paper; the 2-page IEEEtran constraint no longer applies.
 
 ---
 
@@ -114,7 +79,7 @@ All slices that consume Widar3.0 operate on **raw Channel State Information** fr
 **Tracer-bullet issues:**
 
 1. **T2.1 — Scaffold + SimCLR end-to-end with stub data.**
-2. **T2.2 — Real Widar3.0 raw-CSI cross-environment loader.** Build a split where train and test draw from different recording dates corresponding to different rooms (the 15 dates span 3 environments — see Slice-1 AFK plan section 6 for date-to-room mapping verification).
+2. **T2.2 — Real Widar3.0 raw-CSI cross-environment loader.** Build a split where train and test draw from different recording dates corresponding to different rooms (the 15 dates span 3 environments; verify the date-to-room mapping empirically during T2.2 by spot-checking a sample from each date).
 3. **T2.3 — Static/dynamic decomposition** (default: temporal lowpass at 2 Hz cutoff).
 4. **T2.4 — Decomposition sanity test** (synthetic slow + fast components).
 5. **T2.5 — Static-component perturbation augmentation.** Swap statics across the batch.
