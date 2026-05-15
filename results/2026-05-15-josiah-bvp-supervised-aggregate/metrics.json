@@ -1,0 +1,16 @@
+{
+  "mean": 0.5895297332956366,
+  "metric": "accuracy",
+  "n": 3,
+  "sources": [
+    "results\\2026-05-15-josiah-bvp-supervised-seed42\\metrics.json",
+    "results\\2026-05-15-josiah-bvp-supervised-seed1337\\metrics.json",
+    "results\\2026-05-15-josiah-bvp-supervised-seed2024\\metrics.json"
+  ],
+  "std": 0.008743183370912427,
+  "values": [
+    0.5949957591178965,
+    0.594147582697201,
+    0.5794458580718123
+  ]
+}

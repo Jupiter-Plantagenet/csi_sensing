@@ -1,232 +1,426 @@
-# 09 — Execution Roadmap: From Where We Are To ICTC-Paper Results
+# 09 - Single Execution Plan: Baselines, Benchmarks, and Proposed CSI Augmentations
 
-This document sequences the work that takes the project from its current state to **a full ICTC submission**: a 6-page IEEE-Xplore-indexed paper comparing physics-informed augmentations against published baselines on Widar3.0. Two halves:
+This is the single source of truth for the project execution plan. It subsumes
+the old team work plan and the baseline reproduction protocol.
 
-- **Part A** — reproduce the baselines we will compare against (Slice 5), *exactly* as published.
-- **Part B** — run our physics-informed augmentations against those baselines (Slices 1, 2, 4, 6; Slice 3 already done).
+The project has two goals:
 
-The final deliverable is a 6-page ICTC paper at `papers/team/ictc-paper/` (local-only LaTeX, project-tracked figure scripts and writeups), supported by **six figures** at `papers/team/`. The project prefers figures over tables — bar charts, line plots, and curves convey the comparisons more compellingly to reviewers, and small accompanying markdown files hold the underlying numbers + the figure-generation script alongside each figure.
+1. **Baselines and benchmark reproduction.** Reproduce the comparison methods
+   we cite, especially published baselines, as exactly as possible.
+2. **Proposed solution implementation and investigation.** Implement and test
+   physics-informed CSI augmentations against a trustworthy hand-crafted
+   baseline.
 
-| Figure (PNG/PDF) | What it shows | Slice contributor(s) |
-|---|---|---|
-| `papers/team/baselines-figure.png` | **Reproduction validation.** Paired bar chart per baseline: our reproduced number alongside the published headline, with the gap visually obvious. | Slice 5 |
-| `papers/team/comparison-figure.png` | **Main results.** Grouped bar chart: 5 baselines + 4 physics-informed augmentations × cross-subject accuracy (mean ± std error bars, 3 seeds). | all slices |
-| `papers/team/cross-domain-figure.png` | **Generalization breakdown.** Grouped bar chart: same methods (rows) × four cross-domain splits (cross-subject, cross-environment, cross-position, cross-orientation) as bar groups. Reveals which augmentation helps which axis. | all slices |
-| `papers/team/label-efficiency-figure.png` | **SSL's value proposition.** Line plot: accuracy vs label fraction (1%, 5%, 10%, 50%, 100%) for the best augmentations vs the hand-crafted baseline. | Slice 5 + Slice 1 |
-| `papers/team/composability-figure.png` | **Interaction effects.** Bar chart: Doppler alone, coherence-mask alone, both combined, no-aug baseline; deltas annotated. | Slice 6 |
-| `papers/team/coherence-robustness-figure.png` | **Held-out subcarrier robustness.** Line plot: accuracy vs subcarrier-mask fraction at test time, baseline vs coherence-aware augmentation. | Slice 4 |
-
-Each figure is produced by a project-tracked Python script at `src/slices/<owner>/figures.py` (or `papers/team/figures/<figname>.py` for cross-slice integrations). The underlying numbers are committed in a small accompanying markdown file next to each figure (e.g., `papers/team/baselines-figure.md`) so anyone can audit the figure without re-running the experiments. Per-slice 1-page writeups also live at `papers/team/<slice>.md` (Collins's `phase-noise.md` already exists; George's `doppler.md`, Chigozie's `static.md`, Ihunanya's `coherence.md`, Victor's `composability.md` are TODO).
-
-If you have not yet read [`08-team-work-plan.md`](08-team-work-plan.md), read it first. This doc is the *order* in which the work in doc 08 should happen, with concrete sequencing.
+Nothing is paper-ready until the relevant acceptance gate in this document is
+met.
 
 ---
 
-## 0. Snapshot of where we are right now
+## 1. Non-Negotiable Rules
 
-**On `main`:**
+### 1.1 Published Baselines
 
-- Slice 3 (Collins, calibrated phase-noise injection) **complete**: all eight tracer-bullets merged. Code under `src/slices/collins/`, writeup at `papers/team/phase-noise.md`.
-- Slice 1 (George, Doppler-aware time warping) **partial**: T1.1 (scaffold), T1.2 (Widar3.0 cross-subject loader), T1.3 (generic-augmentation baseline functions), T1.4 + T1.5 (Doppler augmentation + sanity test) all merged. T1.6, T1.7, T1.8 remaining (repurposed — see §2.1).
-- Conventions doc 07, work-plan doc 08, cross-domain-drop convention fix all merged. (The earlier Slice 1 AFK plan has been retired; George + Claude drive execution directly, so the AFK-handoff plan is no longer needed.)
-- Raw Widar3.0 CSI archives downloaded to `data/widar3/raw/` (~80 GB across 15 dates, verified via CRC and a csiread smoke test).
+Published baselines must be reproduced as exactly as possible.
 
-**Not started:**
+- Exact reproduction tolerance: **0.1 percentage point** absolute accuracy gap
+  from the published headline value (`0.001` fractional accuracy).
+- Exact reproduction means matching the paper's preprocessing, split, encoder,
+  objective, optimizer, schedule, evaluation protocol, and metric.
+- If exact reproduction is impossible on this hardware or with available data,
+  the result is labelled **hardware-limited**, not exact.
+- If any encoder, preprocessing, split, schedule, receiver set, modality, or
+  fallback augmentation differs from the paper, the result is **not** a
+  published-baseline reproduction.
+- Do not keep runnable approximations of published baselines in baseline code.
+  Approximate AutoFi/CAPC code was removed for this reason.
 
-- Slice 2 (static-component perturbation)
-- Slice 4 (coherence-aware subcarrier masking)
-- Slice 5 (baseline reproduction — now in scope for full reproductions)
-- Slice 6 (composability of Doppler + coherence-mask)
+Every published-baseline result folder must include:
 
-**Execution model.** As of 2026-05-15, George and Claude are the de-facto engineering team. All slice issues are in scope for us to execute. Per-slice ownership (in doc 08 §3) is preserved nominally so commits and PRs attribute correctly, but in practice we drive every slice's tracer-bullets to completion.
+- `config.yaml`
+- `metrics.json` with our value, published value, citation/table reference, and
+  reproduction classification
+- `git_hash.txt`
+- `notes.md` explicitly stating `exact`, `hardware-limited`, or `failed`
+- `split_audit.json` when using local Widar3.0 data
+
+### 1.2 Project Baselines and Proposed Methods
+
+Project baselines and proposed augmentations use the shared project protocol:
+
+- Seeds: `[42, 1337, 2024]`
+- Reporting: mean plus standard deviation
+- Primary evaluation: frozen-encoder linear probe unless the published baseline
+  requires something else
+- Improvement rule: candidate mean must exceed `baseline mean + 1 * baseline std`
+- Result folders must include `config.yaml`, `metrics.json`, `git_hash.txt`,
+  `notes.md`, and split audit metadata where applicable
+
+### 1.3 Production Defaults (BVP, after 2026-05-15 pivot)
+
+The canonical input representation for project baselines and published-baseline
+reproductions is **Widar3.0 BVP**, not raw CSI. Raw CSI cross-subject sat at
+chance for receivers `[1]`, `[1,2,3]`, and `[1..6]` under the 2026-05-15 Gate 1
+sweep (see `results/2026-05-15-cross-subject-floor-finding.md` and the
+`results/2026-05-15-josiah-supervised-seed*` aggregates). BVP is the
+representation the AutoFi paper and the SenseFi benchmark both use; it makes
+the baseline figure reproducible.
+
+For project-owned BVP runs:
+
+- Dataset: Widar3.0 BVP CSV (SenseFi release, ``Widardata/`` tree)
+- Canonical cross-subject split: train users `5-17`, test users `1-4`
+- Canonical class filter: gestures `1-6` (Push&Pull, Sweep, Clap, Slide,
+  Draw-N(H), Draw-O(H))
+- Sample shape: `(T=22, vx=20, vy=20)` normalized
+  `x = (x - 0.0025) / 0.0119`
+- Loader/audit source: `src/slices/josiah/widar_bvp.py`
+
+For published-baseline reproductions on BVP:
+
+- AutoFi (Yang et al. 2022): SenseFi `Widardata/train` and `Widardata/test`
+  folders verbatim; all 22 classes; SSL on train, linear probe trained on
+  train, accuracy reported on test. Matches the authors' released
+  `self_supervised.py` reference.
+- CAPC (Barahimi et al. 2024): **hardware-limited** — paper headline is on
+  SignFi with synchronized uplink/downlink CSI which Widar3.0 does not
+  provide. See `papers/team/capc-hardware-limited.md`.
+
+For raw-CSI runs (legacy, **chance-level**, retained only for diagnostic
+purposes):
+
+- `src/slices/widar.py` still loads raw Intel 5300 `.dat` with
+  representation `real-imag` and the canonical filters in
+  `results/2026-05-15-cross-subject-floor-finding.md`.
+- Do not use raw CSI for paper-ready results until a working preprocessing
+  path is identified (BVP regeneration, or a different dataset altogether).
+
+If supervised sanity does not beat chance under the BVP defaults, do not run
+expensive SSL production experiments; diagnose first.
 
 ---
 
-## 1. Part A — Reproduce baselines (Slice 5)
+## 2. What Counts as Done
 
-The team's "comparison to conventional solutions" depends on these. Without anchored baseline numbers, our augmentation results have nothing meaningful to be compared against. **Reproductions are exact: each baseline runs with its published encoder, pretext task, and training schedule, not adapted to our default encoder.**
+### Goal 1: Baselines and Benchmarks
 
-### 1.1 The baseline set
+Done means:
 
-Five baselines, each as a separate tracer-bullet PR:
+- Supervised no-SSL, SimCLR-trivial, and hand-crafted SimCLR have 3-seed
+  production results on the same audited project split.
+- AutoFi and CAPC are either exact reproductions within 0.1 percentage point of
+  the published value, or are explicitly marked hardware-limited/failed with
+  a documented blocker.
+- `papers/team/baselines-figure.md` contains source numbers, citations, gap
+  analysis, and exact-vs-published status.
+- `papers/team/baselines-figure.png` is generated from the committed source
+  numbers.
 
-| # | Baseline | Encoder | Pretext / loss | Reference |
+### Goal 2: Proposed Solutions
+
+Done means:
+
+- Doppler-aware time warping, static-component perturbation, coherence-aware
+  masking, and Doppler+coherence composability each have 3-seed results.
+- Each proposed method is compared against the same hand-crafted baseline or
+  the correct split-specific hand-crafted baseline.
+- Each slice has a one-page writeup under `papers/team/`.
+- The team figures are generated from committed source numbers.
+
+---
+
+## 3. Execution Gates
+
+### Gate 0 - Repo Hygiene
+
+Purpose: prevent old diagnostics from contaminating paper evidence.
+
+Steps:
+
+1. Keep adapted AutoFi/CAPC code out of runnable baseline paths.
+2. Treat existing chance-level raw-CSI result folders as diagnostics only.
+3. Use `src.production.classify_reproduction` for every published-baseline
+   comparison.
+4. Use `src.production_runner` only for project baselines and proposed methods,
+   not exact AutoFi/CAPC until exact code exists.
+
+Acceptance:
+
+- No `--mode autofi`, `--mode capc`, `autofi-adapted`, or `capc-adapted`
+  production path exists.
+- Tests pass.
+
+### Gate 1 - BVP Sanity (canonical, after 2026-05-15 pivot)
+
+Purpose: prove the project-owned BVP pipeline is not broken.
+
+Steps:
+
+1. Audit the canonical cross-subject BVP split:
+
+   ```bash
+   python -m src.slices.josiah.widar_bvp --root data/widar3/Widardata --split cross-subject --train all --gestures 1,2,3,4,5,6
+   ```
+
+2. Run supervised sanity:
+
+   ```bash
+   python -m src.production_runner --method bvp-supervised --seeds 42 --epochs 50 --batch-size 64
+   ```
+
+Acceptance:
+
+- Supervised top-1 accuracy must beat chance by at least 0.03 absolute
+  accuracy (`> 0.1967` for 6 classes).
+- 2026-05-15 sanity (2 epochs, single seed): top-1 = 0.5512. **Passes.**
+
+Raw-CSI Gate 1 (legacy, kept for record): all three receiver configurations
+failed at chance:
+
+- receivers `[1]`:       supervised top-1 = 0.158 (results/gate1-supervised-r1-T200-seed42.log)
+- receivers `[1,2,3]`:   supervised top-1 = 0.169 (results/gate1-supervised-r123-T200-seed42.log)
+- receivers `[1..6]`:    supervised top-1 = 0.168 (results/gate1-supervised-r123456-T200-seed42.log)
+
+### Gate 2 - Project Baseline Production (BVP)
+
+Purpose: establish the comparison column for proposed methods.
+
+Run, after Gate 1 passes:
+
+```bash
+python -m src.production_runner --method bvp-supervised --seeds 42,1337,2024 --epochs 50 --batch-size 64
+python -m src.production_runner --method bvp-simclr-trivial --seeds 42,1337,2024 --epochs 300 --batch-size 64
+python -m src.production_runner --method bvp-simclr-handcrafted --seeds 42,1337,2024 --epochs 300 --batch-size 64
+```
+
+Acceptance:
+
+- Each aggregate result has three seed folders.
+- Each folder has complete metadata.
+- Hand-crafted BVP SimCLR becomes the comparison baseline for proposed methods.
+
+### Gate 3 - Exact Published Baseline Reproduction
+
+Purpose: reproduce AutoFi and CAPC as published, not as approximations.
+
+For each published baseline:
+
+1. Read the paper and extract the exact benchmark cell:
+   - dataset
+   - preprocessing
+   - split
+   - model/encoder
+   - SSL objective
+   - optimizer
+   - schedule
+   - batch size
+   - evaluation protocol
+   - metric
+   - published value
+2. Check whether the exact input modality exists locally.
+3. Implement only the exact path. Do not add an approximation under the same
+   method name.
+4. Run one seed to verify the result is in range.
+5. Run three seeds if the first seed is plausible.
+6. Classify the result:
+   - `exact` if gap <= 0.1 percentage point
+   - `hardware-limited` if hardware/modality prevents exact reproduction
+   - `failed` if exact reproduction was possible but did not match
+
+Acceptance:
+
+- AutoFi and CAPC have exact/hardware-limited/failed classifications.
+- Any non-exact result is described honestly in the baseline figure notes.
+
+### Gate 4 - Proposed Method Production
+
+Purpose: test physics-informed augmentations against the established baseline.
+
+Run after Gate 2 passes:
+
+```bash
+python -m src.production_runner --method doppler --seeds 42,1337,2024 --epochs 300 --batch-size 64 --representation real-imag --time-steps 200
+python -m src.production_runner --method static-perturb --seeds 42,1337,2024 --epochs 300 --batch-size 64 --representation real-imag --time-steps 200
+python -m src.production_runner --method coherent-mask --seeds 42,1337,2024 --epochs 300 --batch-size 64 --representation real-imag --time-steps 200
+python -m src.production_runner --method composability-doppler --seeds 42,1337,2024 --epochs 300 --batch-size 64 --representation real-imag --time-steps 200
+python -m src.production_runner --method composability-coherent --seeds 42,1337,2024 --epochs 300 --batch-size 64 --representation real-imag --time-steps 200
+python -m src.production_runner --method composability-combined --seeds 42,1337,2024 --epochs 300 --batch-size 64 --representation real-imag --time-steps 200
+```
+
+Acceptance:
+
+- Each proposed method has three seed folders and an aggregate.
+- Each proposed method is compared to the relevant hand-crafted baseline.
+- Improvements are labelled real only if they pass the project comparison rule.
+
+### Gate 5 - Paper Artifacts
+
+Purpose: convert runs into paper-ready evidence.
+
+Create:
+
+- `papers/team/baselines-figure.md`
+- `papers/team/baselines-figure.png`
+- `papers/team/comparison-figure.md`
+- `papers/team/comparison-figure.png`
+- `papers/team/cross-domain-figure.md`
+- `papers/team/cross-domain-figure.png`
+- `papers/team/label-efficiency-figure.md`
+- `papers/team/label-efficiency-figure.png`
+- `papers/team/coherence-robustness-figure.md`
+- `papers/team/coherence-robustness-figure.png`
+- `papers/team/composability-figure.md`
+- `papers/team/composability-figure.png`
+
+Create/update writeups:
+
+- `papers/team/doppler.md`
+- `papers/team/static.md`
+- `papers/team/coherence.md`
+- `papers/team/composability.md`
+- `papers/team/baselines.md`
+
+Acceptance:
+
+- Every figure is generated from committed source numbers.
+- Every writeup states the baseline, candidate, seeds, mean/std, and whether
+  the result passes the comparison rule.
+- Published-baseline cells state `exact`, `hardware-limited`, or `failed`.
+
+---
+
+## 4. Slice Responsibilities
+
+The code remains split by owner directory, but this document controls the
+sequence.
+
+| Slice | Owner | Directory | Contribution | Required Output |
 |---|---|---|---|---|
-| 1 | **Supervised, no SSL** | Tiny CNN (conventions-doc default) | Cross-entropy on labelled cross-subject | grounds "what does no SSL get you?" |
-| 2 | **SimCLR with trivial augmentation** | Tiny CNN (default) | NT-Xent with random crop only | grounds "does SSL help at all?" |
-| 3 | **AutoFi (exact reproduction)** | AutoFi's CNN-LSTM as published | Geometric SSL with their pretext head and schedule | Yang et al. 2023 |
-| 4 | **CAPC (exact reproduction)** | CAPC's encoder as published | CPC + Barlow Twins with their schedule | Barahimi et al. 2024 |
-| 5 | **Hand-crafted-aug** | Tiny CNN (default) | SimCLR with Gaussian noise + random subcarrier mask | the baseline our physics-informed augmentations must beat |
-
-For baselines 3 and 4, success means **reproducing the published headline accuracy on Widar3.0 cross-subject within ~5 pp** (publication-quality tolerance). If we land further out, document the gap and the suspected cause (different evaluation split, undocumented hyperparameters, etc.) in the per-baseline writeup. The reproduction PR contains both our number AND the published number with a citation to the source paper's table.
-
-#### 1.1.1 What each baseline is, in one paragraph
-
-**1. Supervised, no SSL.** The most basic comparison. A CSI sample is fed to the small CNN that's trained from scratch with cross-entropy against the gesture label. No pre-training, no augmentation other than what's needed to batch the data. This tells us "how well does the encoder do with no fancy tricks at all?" — the floor for "what does adding SSL buy you?". Typically this baseline does badly on cross-domain because the model overfits to source-domain quirks.
-
-**2. SimCLR with trivial augmentation.** Same default encoder, but pre-train it with SimCLR (NT-Xent contrastive loss) using just a random temporal crop as the augmentation — no Gaussian noise, no subcarrier masking. Then linear-probe. This isolates "does SSL help at all on CSI, even with the dumbest augmentation?" If the answer is yes, the SSL paradigm itself adds value. If no, we have a problem with our SSL setup that needs fixing before proceeding.
-
-**3. AutoFi (Yang et al. 2023, IEEE IoT Journal).** The first WiFi-specific SSL paper to claim strong cross-domain results. Method: a CNN-LSTM encoder pre-trained with a *geometric* pretext task — apply a known geometric transformation (rotation, time-shift, etc.) to the CSI sample, then have the model predict which transformation was applied. The encoder learns geometry-invariant features that transfer across domains. We reproduce their exact encoder, pretext task, and training schedule on Widar3.0 cross-subject. Our reproduced number sits alongside their published headline in the validation figure.
-
-**4. CAPC (Barahimi et al. 2024, IEEE OJCOMS).** More recent and stronger. Method: combine CPC (contrastive predictive coding — predict future representations of the sequence given the past) with Barlow Twins (a non-contrastive SSL loss that makes the cross-correlation between two views close to the identity matrix). Their encoder is different from AutoFi's. The paper's strongest contribution is its augmentation-ablation analysis. We reproduce CAPC to validate our pipeline against the best-published numbers we know of.
-
-**5. Hand-crafted-aug SimCLR.** Same default encoder. Pre-train with SimCLR using two generic augmentations: additive Gaussian noise (`σ = 0.05`) and random subcarrier mask (drop ~15% of subcarriers). This is the **operational baseline** our physics-informed augmentations must beat. The comparison story for the project is "generic CV-style augmentations vs physics-informed augmentations, same encoder, same SSL, same data, same protocol." If our augmentations beat this baseline, physics matters for the augmentation choice. If not, we've documented an honest negative result.
-
-### 1.2 Sequenced tracer-bullets for Slice 5
-
-| Tracer | Issue | What ships |
-|---|---|---|
-| **T5.1** | #66 | Slice scaffold under `src/slices/josiah/`. Tiny CNN + classifier head + cross-entropy, on Widar3.0 raw CSI cross-subject. End-to-end runnable on stub data. |
-| **T5.2** | #67 | Supervised baseline produces a defensible cross-subject accuracy on real data. 3 seeds. Logged under `results/<date>-josiah-supervised-3seeds/`. |
-| **T5.3** | #68 | SimCLR pre-training with trivial augmentation (random crop only) on the default encoder. 3 seeds. |
-| **T5.4** | #69 | **Exact AutoFi reproduction** — implement their CNN-LSTM encoder, their geometric pretext, their training schedule. 3 seeds on cross-subject. Compare reproduced vs published headline. |
-| **T5.5** | #70 | **Exact CAPC reproduction** — implement their encoder, their CPC + Barlow Twins setup, their schedule. 3 seeds. Compare reproduced vs published. |
-| **T5.6** | #71 | Hand-crafted augmentation baseline (Gaussian + random subcarrier mask) on the default encoder. **3 seeds.** This is the comparison-column row used by Slices 1, 2, 4, 6. |
-| **T5.7** | #72 | Build `papers/team/baselines-figure.png` + its companion `baselines-figure.md` (source data, citations, figure-generation script). Paired bar chart per baseline showing reproduced vs published with error bars over 3 seeds. |
-| **T5.8** | #73 | Gap-analysis paragraph identifying which (metric × split) cells are empty across published baselines — these are where our work has the most to contribute. |
-
-### 1.3 What "done" looks like for Part A
-
-Three artifacts on main:
-
-1. `papers/team/baselines-figure.png` — the reproduction-validation figure (paired bars: reproduced vs published, per baseline).
-2. `papers/team/baselines-figure.md` — companion file with the underlying numbers, citations, and the figure-generation script.
-3. The data backing `results/` directories — one per baseline × 3 seeds.
-
-This unblocks every other slice's comparison column. T5.6's number is the row every Part-B slice compares against.
+| 1 | George | `src/slices/george/` | Doppler-aware time warping | 3-seed Doppler vs hand-crafted baseline, label-efficiency sweep, `papers/team/doppler.md` |
+| 2 | Chigozie | `src/slices/chigozie/` | Static-component perturbation | Cross-environment static perturbation result, `papers/team/static.md` |
+| 3 | Collins | `src/slices/collins/` | Calibrated phase-noise injection | Stage A robustness result; Stage B cross-chipset only if CSI-Bench is available |
+| 4 | Ihunanya | `src/slices/ihunanya/` | Coherence-aware subcarrier masking | Robustness sweep and `papers/team/coherence.md` |
+| 5 | Josiah | `src/slices/josiah/` | Baselines | Project baselines plus exact AutoFi/CAPC reproduction work items |
+| 6 | Victor | `src/slices/victor/` | Doppler + coherence composability | Interaction-effects result and `papers/team/composability.md` |
 
 ---
 
-## 2. Part B — Run physics-informed augmentations (Slices 1, 2, 4, 6)
+## 5. Tracer-Bullet Work Items
 
-Each augmentation slice runs its own pre-training with the augmentation in place and compares to the hand-crafted baseline (T5.6). Slice 3 (Collins) has already done this; the others follow the same template.
+### Slice 1 - Doppler-Aware Time Warping
 
-### 2.1 Slice 1 — Doppler-aware time warping
+Done:
 
-**Remaining tracer-bullets** on top of merged T1.1–T1.5. T1.7 and T1.8 are repurposed: the project's no-longer aiming at KICS, so the 2-page-IEEEtran constraint is dropped. Slice 1 now ships richer results into the team paper.
+- T1.1 scaffold
+- T1.2 real Widar3.0 cross-subject loader
+- T1.3 generic augmentation baseline
+- T1.4 Doppler-aware time warping
+- T1.5 Doppler sanity test
 
-| Tracer | Issue | What ships (repurposed) |
-|---|---|---|
-| **T1.6** | #39 | Multi-seed comparison: Doppler vs hand-crafted baseline, 3 seeds, paired test per the convention rule in doc 07. Results at `results/<date>-george-3seed/`. |
-| **T1.7** | #91 | **Richer Doppler results:** sweep warp-range `[a, b]` (e.g. `[0.7, 1.4]` vs `[0.5, 1.7]`), and sweep label fractions {1, 5, 10, 50, 100}%. 3 seeds each. Output: `results/<date>-george-doppler-sweep/`. |
-| **T1.8** | #92 | **1-page writeup at `papers/team/doppler.md`** — accuracy table, label-efficiency curve, narrative. Contribution to the team paper. |
+Remaining:
 
-The old `papers/kics-george/` is no longer the deliverable. It stays gitignored as future-work; do not invest more time in IEEEtran-2-page polish.
+1. **T1.6** - 3-seed Doppler vs hand-crafted baseline.
+2. **T1.7** - warp-range sweep and label-fraction sweep.
+3. **T1.8** - `papers/team/doppler.md`.
 
-**Output deliverable:** `papers/team/doppler.md` + supporting `results/` directories.
+### Slice 2 - Static-Component Perturbation
 
-### 2.2 Slice 2 — Static-component perturbation
+1. **T2.1** - scaffold.
+2. **T2.2** - real cross-environment loader.
+3. **T2.3** - static/dynamic decomposition.
+4. **T2.4** - decomposition sanity test.
+5. **T2.5** - static-component perturbation augmentation.
+6. **T2.6** - single-seed baseline vs static perturbation.
+7. **T2.7** - 3-seed comparison.
+8. **T2.8** - `papers/team/static.md`.
 
-The 8 tracer-bullets at issues #42–#49 are unchanged from the slice plan in doc 08 section 5. The sequencing within the slice is enforced by the issue's "Blocked by" notes.
+### Slice 3 - Calibrated Phase Noise
 
-**Critical path:** T2.3 (decomposition method) is the gate. Once that lands, T2.4 (sanity test) and T2.5 (augmentation) follow in sequence. T2.7 produces the multi-seed comparison; T2.8 produces `papers/team/static.md`.
+Stage A uses Widar3.0 and is valid as a robustness study. Stage B requires
+CSI-Bench for the actual cross-chipset claim.
 
-### 2.3 Slice 4 — Coherence-aware subcarrier masking
+1. **T3.1** - scaffold.
+2. **T3.2** - real Widar3.0 loader.
+3. **T3.3** - phase-noise profile fitting.
+4. **T3.4** - profile sanity test.
+5. **T3.5** - phase-noise injection augmentation.
+6. **T3.6** - single-seed baseline vs phase noise.
+7. **T3.7** - 3-seed comparison.
+8. **T3.8** - `papers/team/phase-noise.md`.
 
-The 8 tracer-bullets at #58–#65. Robustness study (T4.6) is the slice's distinctive contribution — the only one of the four augmentations that gets its own dedicated figure (`coherence-robustness.png`) in the team paper.
+### Slice 4 - Coherence-Aware Masking
 
-### 2.4 Slice 6 — Composability of Doppler + coherence-mask
+1. **T4.1** - scaffold.
+2. **T4.2** - real cross-subject loader.
+3. **T4.3** - coherence-bandwidth estimation.
+4. **T4.4** - estimation sanity test.
+5. **T4.5** - coherence-aware block masking.
+6. **T4.6** - held-out subcarrier robustness sweep.
+7. **T4.7** - 3-seed comparison.
+8. **T4.8** - `papers/team/coherence.md`.
 
-Slice 6's heaviest tracer-bullet is T6.3 (reimplement Doppler + coherence-mask in-slice for independence from Slices 1 and 4). Once T6.3 lands, T6.4 (single-aug runs) and T6.5 (combined-aug run) are mechanical.
+### Slice 5 - Baselines
 
-**Output deliverable:** `papers/team/composability.md` + interaction-effects bar chart at `papers/team/composability-interaction.png`.
+1. **T5.1** - supervised scaffold.
+2. **T5.2** - supervised project baseline, 3 seeds.
+3. **T5.3** - SimCLR-trivial project baseline, 3 seeds.
+4. **T5.4** - AutoFi exact reproduction. No approximation.
+5. **T5.5** - CAPC exact reproduction. No approximation.
+6. **T5.6** - hand-crafted SimCLR project baseline, 3 seeds.
+7. **T5.7** - baseline figure and source numbers.
+8. **T5.8** - gap analysis.
 
-### 2.5 What "done" looks like for Part B
+### Slice 6 - Composability
 
-Five 1-page writeups at `papers/team/` (Collins's `phase-noise.md` already shipped; George's `doppler.md`, Chigozie's `static.md`, Ihunanya's `coherence.md`, Victor's `composability.md` are TODO). Each includes the augmentation's accuracy, the hand-crafted baseline's accuracy, whether the improvement passes the convention rule, and brief discussion.
-
-Plus four tables/figures listed in the doc's intro — built incrementally as slices ship.
-
----
-
-## 3. Sequencing
-
-Two things gate everything:
-
-1. **T5.6 (hand-crafted baseline, 3 seeds)** is the comparison column every other slice uses. Until this lands, slice owners can run their augmentations and log raw numbers, but the "is our augmentation better than the generic baseline?" claim cannot be made.
-2. **The team paper** (ICTC submission) needs all the per-slice writeups plus the five tables drafted. George coordinates assembly after all slices ship.
-
-### 3.1 Concrete priority order
-
-The fastest path to a complete ICTC draft:
-
-1. **Slice 5 T5.1–T5.3 + T5.6** (the four tracer-bullets on the critical path). T5.6 is the comparison column for everyone. T5.4 / T5.5 (full AutoFi / CAPC reproductions) are higher-rigour but lower-urgency — they enrich the baseline table without being blockers.
-2. **Slice 1 T1.6** (multi-seed Doppler comparison) — small if T5.6 has already produced the baseline number, since the seed runs are independent.
-3. **Slices 2, 4, 6 in parallel** — each owner runs their slice's full chain. Estimated 1–2 weeks per slice with focused effort (George + Claude bandwidth, less affected by classwork than the original distributed-team model).
-4. **Slice 1 T1.7 + T1.8** — richer Doppler results and `papers/team/doppler.md` writeup.
-5. **Slice 5 T5.4, T5.5, T5.7, T5.8** — exact AutoFi/CAPC reproductions and the baseline table.
-6. **Team paper at `papers/team/ictc-paper/`** — George assembles the five tables + per-slice writeups into the 6-page ICTC submission.
-
-### 3.2 Critical-path summary
-
-```
-T5.1 → T5.2 → T5.3 → T5.6 ─┬─→ T1.6 → T1.7 → T1.8 (Slice 1 writeup → papers/team/doppler.md)
-                             ├─→ Slice 2 multi-seed → papers/team/static.md
-                             ├─→ Slice 4 multi-seed + robustness study → papers/team/coherence.md
-                             └─→ Slice 6 multi-seed + interaction plot → papers/team/composability.md
-                                                                                      ↓
-                              T5.4, T5.5, T5.7, T5.8 → papers/team/baselines.md
-                                                                                      ↓
-                              George assembles papers/team/ictc-paper/ (6-page ICTC submission)
-```
-
-### 3.3 Target dates (working backwards from ICTC)
-
-- **ICTC 2026 submission deadline:** typically July (TBC each year). Target: have the paper in shape by July 1.
-- **July 1:** ICTC submission.
-- **June 15:** internal review of the team-paper draft.
-- **June 1:** all slice writeups landed; all five tables built.
-- **May 15:** T5.6 (hand-crafted baseline) and T1.6 (Slice 1 multi-seed) shipped. Slice 2 / 4 / 6 augmentation implementations underway.
-- **Now (May 15):** T5.1 scaffolding begins; doc 09 published.
-
-If ICTC's actual deadline lands later than July, the cushion benefits everyone. If earlier, the team paper still ships in some form — even if we miss ICTC, the work lives on the repo and can target a workshop or the next conference cycle.
+1. **T6.1** - scaffold.
+2. **T6.2** - real cross-subject loader.
+3. **T6.3** - in-slice Doppler and coherence-mask implementations.
+4. **T6.4** - individual augmentation runs.
+5. **T6.5** - combined augmentation run.
+6. **T6.6** - interaction-term plot.
+7. **T6.7** - 3-seed comparison.
+8. **T6.8** - `papers/team/composability.md`.
 
 ---
 
-## 4. Risks and mitigations
+## 6. Implementation Order
 
-| Risk | Mitigation |
+Use this order. Do not jump to expensive SSL runs before the gates pass.
+
+1. Finish repo hygiene:
+   - no runnable approximated AutoFi/CAPC baseline paths
+   - exact reproduction protocol enforced in docs and result classification
+   - focused tests passing
+2. Run Gate 1 supervised sanity.
+3. If Gate 1 passes, run Gate 2 project baselines.
+4. In parallel, investigate exact AutoFi/CAPC requirements from the papers and
+   official code if available.
+5. Implement exact AutoFi/CAPC only after the exact preprocessing/encoder/metric
+   are known.
+6. Run Gate 4 proposed methods after the hand-crafted baseline exists.
+7. Generate paper artifacts.
+
+---
+
+## 7. Risk Handling
+
+| Risk | Response |
 |---|---|
-| Exact AutoFi / CAPC reproduction lands far from published numbers | Document the gap honestly in `papers/team/baselines.md`. T5.6 (hand-crafted) is the operative baseline for the project's contribution claim; T5.4/T5.5 reproductions are validation, not the headline. |
-| Slice 2 / 4 / 6 augmentation underperforms the hand-crafted baseline | Negative results are publishable. Write up honestly; flag in the slice's writeup. The team paper's framing can shift to "physics-informed augmentations are an honest, falsifiable design space" rather than "they all win." |
-| CSI-Bench dependency for Slice 3 Stage B never resolves | Slice 3 Stage A (already complete) covers the team paper's contribution. Stage B (cross-chipset transfer on CSI-Bench) is flagged in `papers/team/phase-noise.md` as future work. |
-| Compute budget exceeded | Per doc 07, every slice runs on CPU or a single GPU. Estimated 5–15 hours of SimCLR pre-training total across all slices (3 seeds × 5–6 conditions × 30–60 min each on GPU). Tractable on one machine. |
-| Re-running into the "Auto-Close Cascade" pattern | Convention: rebase each slice's branch onto main *before* attempting merge. The 2026-05-14 cascade was caused by `gh pr merge --admin` on CONFLICTING PRs; that pattern is now off-limits. |
-| ICTC deadline missed | The work lives on the repo and is reproducible. Backup venues: a workshop at a major conference, a journal special issue, or the next ICTC cycle. The team paper is not destroyed by missing one venue. |
+| Supervised raw-CSI sanity fails | Stop SSL production. Expand receivers, then all receivers, then consider paper-required BVP preprocessing. |
+| AutoFi/CAPC exact reproduction cannot be implemented locally | Mark hardware-limited or modality-limited; document the blocker and do not claim exact reproduction. |
+| Proposed augmentation underperforms hand-crafted baseline | Report honestly. Negative results are valid if the protocol is clean. |
+| CSI-Bench is unavailable | Keep Slice 3 Stage B as future work; do not claim cross-chipset generalization. |
+| Compute is too slow | Reduce only diagnostic runs. Do not reduce exact published schedules and still call them exact. |
 
 ---
 
-## 5. Conventions to remember
+## 8. Final Deliverable
 
-These all live in `docs/07-experiment-scaffold.md`:
+The final project package is:
 
-- Encoder: tiny CNN, ~50K parameters (for our augmentations and the hand-crafted baseline). AutoFi and CAPC reproductions use their own published encoders per §1.1.
-- SSL framework: SimCLR for our augmentations. AutoFi / CAPC reproductions use their own pretext objectives.
-- Eval: linear probe on frozen encoder.
-- Seeds: 3 minimum (`[42, 1337, 2024]`).
-- Reporting: mean ± std.
-- "Improvement is real" rule: candidate mean > baseline mean + 1 × baseline std, positive sign.
-- Cross-domain drop (post-#107): `source_acc − target_acc`, positive when target underperforms source.
-- Results layout: `results/<YYYY-MM-DD>-<slice>-<short-description>/` with `config.yaml`, `git_hash.txt`, `metrics.json`, `notes.md`.
-
----
-
-## 6. What "ship the ICTC paper" looks like
-
-When all the above lands, George (with Claude's drafting support) does the final integration:
-
-1. Create `papers/team/ictc-paper/main.tex` (local-only — like the KICS paper before it, the .tex source stays out of git; project-tracked artifacts are the figure scripts and the per-slice 1-page writeups under `papers/team/`).
-2. Pull every `papers/team/<slice>.md` into the methodology and results sections.
-3. Build the five tables (`baselines.md`, `comparison.md`, `cross-domain.md`, `label-efficiency.md`, `composability.md`) into LaTeX `tabular` form.
-4. Embed `coherence-robustness.png` as the paper's main figure (alongside the SSL pipeline architecture diagram).
-5. Write the integrative discussion that ties the augmentation results to the project's physics-informed thesis (per `docs/03-the-project.md`).
-6. Reference list: AutoFi, CAPC, CIG-MAE, SimCLR, Widar3.0, Xu et al. SSL benchmark, plus 1–2 of George's prior KICS / ICAIIC works to anchor the research line.
-7. Submit to ICTC by the published deadline.
-
----
-
-## 7. Open coordination items
-
-- **Class deadline alignment.** The project has a class deadline (TBC); the ICTC paper has its own. Confirm both on the team chat. If the class deadline lands before ICTC, the project may need to ship a class-only writeup ahead of the ICTC version.
-- **Slice ownership formally.** Per-slice attribution stays as in doc 08 (Chigozie / Collins / Ihunanya / Josiah / Victor), but the engineering execution model has shifted: George + Claude drive the work, slice owners are kept informed and named on the paper. Communicate this directly to the team.
-- **What to do with `papers/kics-george/`.** Currently gitignored, contains some scaffolding for the now-defunct KICS submission. Either delete locally or keep as a stretch goal (parallel 2-page KICS Fall 2026 submission carved out of the ICTC paper's Slice 1 contribution). Defer.
+- exact/hardware-limited published-baseline reproduction record
+- 3-seed project baseline record
+- 3-seed proposed-method record
+- source-number markdown files
+- generated figures
+- per-slice writeups
+- a 6-page team paper assembled from those artifacts

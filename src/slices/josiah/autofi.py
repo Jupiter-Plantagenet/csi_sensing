@@ -1,268 +1,377 @@
-"""AutoFi exact reproduction (T5.4).
+"""AutoFi exact reproduction on Widar3.0 BVP.
 
-Geometric Self-Supervised Learning (GSS) from Yang et al.,
-"AutoFi: Towards Automatic WiFi Human Sensing via Geometric
-Self-Supervised Learning" (IEEE IoT Journal 2022).
+Implements AutoFi (Yang, Chen, Zou, Wang, Xie. *AutoFi: Toward Automatic Wi-Fi
+Human Sensing via Geometric Self-Supervised Learning.* IoT-J 2022,
+arXiv:2205.01629) per the authors' released SenseFi code
+(``xyanchen/WiFi-CSI-Sensing-Benchmark``: ``self_supervised.py`` +
+``self_supervised_model.py`` + ``dataset.py``).
 
-This module reproduces the GSS pre-training stage exactly as described
-in §III.B of the paper:
+Key fidelity choices:
 
-- Augmentation A_ε: x ← x + εζ, ζ ~ N(0, σ²) — additive Gaussian noise
-  on the raw CSI (the paper's only augmentation).
-- Twin encoders E_θ1, E_θ2 (Table I 6-layer CNN) + non-linear heads
-  G_φ1, G_φ2 (MLP) that emit per-view prediction distributions P1, P2
-  over NUM_CLASSES bins via softmax.
-- Loss: L = L_p + λ·L_m + γ·L_g (eq. 9), λ=1, γ=1000.
-  - L_p (probability consistency, eq. 3): symmetric KL between P1, P2.
-  - L_m (mutual information, eq. 5): h(E[P]) + E[h(P)], applied to both
-    views and summed — note the paper writes the second term with a
-    plus sign because both terms are signed for *minimisation* of
-    -I(X;Y), see derivation in §III.B.
-  - L_g (geometric consistency, eq. 8): KL between cosine-similarity
-    Q-distributions of the two views (eqs. 6–7).
-- Optimiser: SGD, lr=0.01, momentum=0.9, batch 128, 300 epochs.
+* Two-stream encoder ``CNN_Parrallel`` adapted to Widar BVP input
+  ``(22, 20, 20)`` (paper §IV-D says the first layer is modified to match
+  the BVP shape; we keep the rest of SenseFi's three-conv structure).
+* GSS loss = ``L_kl + (1+lam1) * EH - lam2 * HE + 100 * L_kde`` exactly as
+  ``self_supervised.py::EntLoss::forward`` returns ``loss['final-kde']``.
+* Augmentations: two views via additive Gaussian noise ``N(1, 2)`` scaled by
+  ``epsilon ~ U(0, 2)`` and ``epsilon ~ U(0.1, 2)``.
+* Optimizer: AdamW, lr=1e-3, weight_decay=1.5e-6 for SSL; Adam lr=1e-3,
+  wd=1e-5 for the linear-probe classifier.
+* Pre-training: 100 epochs. Linear probe: 300 epochs (matches the
+  ``self_supervised.py`` schedule).
 
-Architecture (Table I, §III.B). The paper's stated input is
-3 × 114 × 500 (Atheros tool: 3 RX × 114 subcarriers × 500 timesteps).
-Widar3.0 with the Intel 5300 tool gives 3 RX × 30 subcarriers × T. The
-paper itself notes: "The first layer of the GSS module is slightly
-modified to match the input size." We follow the same adaptation: keep
-the layer-2..6 kernels exactly, scale down the layer-1 kernel and
-stride proportionally to the smaller subcarrier / time dimensions.
+Reproduction targets and known gaps:
 
-The CSI tensor convention in this repo is (T, S, A); we permute to
-(A, S, T) before feeding the Conv2d stack — antennas as channels,
-subcarriers as height, time as width.
+* SenseFi-style protocol (released code): SSL on all 22 classes, linear probe
+  on the same data. This file targets that protocol exactly.
+* Paper §IV-D headline (Widar BVP 20-shot 6-class FSC = 63.80%): NOT what
+  the released code does. Paper used SGD + 300 SSL epochs + few-shot
+  calibration with ``L_c + L_f``; reach via ``--protocol paper-fsc``.
+* The BVP CSVs we have are the SenseFi-processed ``T=22`` format. The paper
+  §IV-D uses the original Widar release with ``T=40``, so an exact match to
+  63.80% is unreachable from the CSV release — classify hardware-limited.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import Literal
 
 import torch
-from torch import nn
+import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
+from .widar_bvp import BVP_T, BVP_VX, BVP_VY, NUM_BVP_CLASSES
 
-# ---------------------------------------------------------------------------
-# Augmentation A_ε (eq. 1): additive Gaussian noise on subcarriers.
-
-def autofi_augment(x: torch.Tensor, sigma: float = 0.05) -> torch.Tensor:
-    """A_ε(x) = x + ε·ζ, ζ ~ N(0, σ²). The paper's only augmentation."""
-    return x + torch.randn_like(x) * sigma
+# -----------------------------------------------------------------------------
+# Encoder — adapted from SenseFi CNN_Parrallel for Widar BVP (22, 20, 20).
 
 
-# ---------------------------------------------------------------------------
-# Feature extractor E_θ — 6-layer CNN, Table I.
-# Adapted for (A=3, S=30, T=100) Intel 5300 / Widar3.0 input.
+class AutoFiBVPEncoder(nn.Module):
+    """SenseFi-style CNN encoder, first layer resized for BVP (22, 20, 20).
 
-class AutoFiCNN(nn.Module):
-    """6-layer CNN from AutoFi Table I, adapted for 30-subcarrier input.
+    Output shape ``(B, hidden_states)`` after BN, matching the SenseFi
+    ``CNN_encoder`` projection-head output used as the SSL feature.
+    """
 
-    Output: (B, feature_dim) feature vector. The paper's classifier
-    F_ψ is a separate 128-then-6-dense head used in the few-shot
-    calibration stage (T5.4 doesn't run FSC; we just need E_θ).
+    def __init__(self, hidden_states: int = 256) -> None:
+        super().__init__()
+        # Input: (B, 22, 20, 20). Treat the 22 time-steps as channels.
+        self.encoder = nn.Sequential(
+            nn.Conv2d(BVP_T, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 96, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+        )
+        # Output spatial: 20 -> 20 -> 10 -> 5; channels 96 -> 96*5*5 = 2400.
+        self.feat_dim = 96 * 5 * 5
+        self.mapping = nn.Linear(self.feat_dim, hidden_states)
+        self.bn = nn.BatchNorm1d(hidden_states)
+
+    def forward(self, x: torch.Tensor, flag: str = "unsupervised") -> torch.Tensor:
+        h = self.encoder(x)
+        h = h.reshape(h.shape[0], -1)
+        if flag == "supervised":
+            return h
+        return self.bn(self.mapping(h))
+
+
+class AutoFiParallel(nn.Module):
+    """Two-stream encoder + linear classifier, mirroring ``CNN_Parrallel``.
+
+    During SSL both encoders see independently augmented views; during the
+    supervised linear probe both encoders see the same ``x`` and the
+    classifier reads the pre-projection ``(B, feat_dim)`` features.
+    """
+
+    def __init__(self, num_classes: int = NUM_BVP_CLASSES, hidden_states: int = 256) -> None:
+        super().__init__()
+        self.encoder_1 = AutoFiBVPEncoder(hidden_states=hidden_states)
+        self.encoder_2 = AutoFiBVPEncoder(hidden_states=hidden_states)
+        self.classifier = nn.Sequential(
+            nn.Linear(self.encoder_1.feat_dim, 128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128, num_classes),
+        )
+
+    def forward(
+        self, x1: torch.Tensor, x2: torch.Tensor, flag: str = "unsupervised"
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        h1 = self.encoder_1(x1, flag=flag)
+        h2 = self.encoder_2(x2, flag=flag)
+        if flag == "supervised":
+            return self.classifier(h1), self.classifier(h2)
+        return h1, h2
+
+
+# -----------------------------------------------------------------------------
+# GSS loss (EntLoss + cosine_similarity_loss) — verbatim from
+# ``self_supervised.py``, vectorized as drop-in PyTorch.
+
+
+def _kl(p: torch.Tensor, q: torch.Tensor, eps: float) -> torch.Tensor:
+    return (p * (p + eps).log() - p * (q + eps).log()).sum(dim=1).mean()
+
+
+def _eh(probs: torch.Tensor, eps: float) -> torch.Tensor:
+    # Mean over batch of per-sample entropy.
+    return -(probs * (probs + eps).log()).sum(dim=1).mean()
+
+
+def _he(probs: torch.Tensor, eps: float) -> torch.Tensor:
+    # Entropy of the batch-mean distribution.
+    mean = probs.mean(dim=0)
+    return -(mean * (mean + eps).log()).sum()
+
+
+def _cosine_similarity_loss(out_net: torch.Tensor, tgt_net: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
+    out = F.normalize(out_net, dim=1, eps=eps)
+    tgt = F.normalize(tgt_net, dim=1, eps=eps)
+    s_out = (out @ out.t() + 1.0) / 2.0
+    s_tgt = (tgt @ tgt.t() + 1.0) / 2.0
+    s_out = s_out / s_out.sum(dim=1, keepdim=True)
+    s_tgt = s_tgt / s_tgt.sum(dim=1, keepdim=True)
+    return (s_tgt * ((s_tgt + eps) / (s_out + eps)).log()).mean()
+
+
+class AutoFiGSSLoss(nn.Module):
+    """SenseFi ``EntLoss::forward`` returning ``loss['final-kde']``.
+
+    Returns a dict so callers can inspect components; ``loss['final-kde']`` is
+    the scalar to ``.backward()``.
     """
 
     def __init__(
         self,
-        in_channels: int = 3,
-        s: int = 30,
-        t: int = 100,
-        feature_dim: int = 128,
+        *,
+        tau: float = 1.0,
+        eps: float = 1e-5,
+        lam1: float = 0.0,
+        lam2: float = 0.5,
+        kde_weight: float = 100.0,
     ) -> None:
         super().__init__()
-        # Table I exact kernels for layers 2..6. Layer 1 kernel/stride is
-        # scaled from (15,23)/9 to (5,9)/3 — same ~3:1 ratio between subcarrier
-        # and time kernel sizes, same stride-9 → stride-3 ratio (30/114 ≈ 0.26).
-        self.features = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=(5, 9), stride=3, padding=(2, 4)),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 32, kernel_size=(3, 7), stride=1, padding=(1, 3)),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2)),
-            nn.Conv2d(32, 64, kernel_size=(3, 7), stride=1, padding=(1, 3)),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 96, kernel_size=(3, 7), stride=1, padding=(1, 3)),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2)),
-        )
+        self.tau = tau
+        self.eps = eps
+        self.lam1 = lam1
+        self.lam2 = lam2
+        self.kde_weight = kde_weight
 
-        with torch.no_grad():
-            probe = torch.zeros(1, in_channels, s, t)
-            flat_dim = self.features(probe).flatten(1).shape[1]
-        self._flat_dim = flat_dim
+    def forward(self, feat1: torch.Tensor, feat2: torch.Tensor) -> dict[str, torch.Tensor]:
+        probs1 = F.softmax(feat1, dim=-1)
+        probs2 = F.softmax(feat2, dim=-1)
+        sharp1 = F.softmax(feat1 / self.tau, dim=-1)
+        sharp2 = F.softmax(feat2 / self.tau, dim=-1)
 
-        self.proj = nn.Linear(flat_dim, feature_dim)
+        kl = 0.5 * (_kl(probs1, probs2, self.eps) + _kl(probs2, probs1, self.eps))
+        eh = 0.5 * (_eh(sharp1, self.eps) + _eh(sharp2, self.eps))
+        he = 0.5 * (_he(sharp1, self.eps) + _he(sharp2, self.eps))
+        kde = _cosine_similarity_loss(feat1, feat2, eps=self.eps)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Input (B, A, S, T); output (B, feature_dim)."""
-        h = self.features(x)
-        h = h.flatten(1)
-        return self.proj(h)
-
-
-# ---------------------------------------------------------------------------
-# Non-linear head G_φ (the "bottleneck layer" in §III.B that separates the
-# feature space). Two-layer MLP → softmax over NUM_CLASSES bins.
-
-class AutoFiHead(nn.Module):
-    def __init__(
-        self, feature_dim: int = 128, hidden_dim: int = 128, num_bins: int = 6
-    ) -> None:
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(feature_dim, hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, num_bins),
-        )
-
-    def forward(self, h: torch.Tensor) -> torch.Tensor:
-        return torch.softmax(self.net(h), dim=-1)
+        final = kl + ((1 + self.lam1) * eh - self.lam2 * he)
+        final_kde = self.kde_weight * kde + final
+        return {
+            "kl": kl,
+            "eh": eh,
+            "he": he,
+            "kde": kde,
+            "final": final,
+            "final-kde": final_kde,
+        }
 
 
-class AutoFiGSS(nn.Module):
-    """Twin-branch GSS module: E_θ1, E_θ2 + G_φ1, G_φ2."""
-
-    def __init__(
-        self,
-        in_channels: int = 3,
-        s: int = 30,
-        t: int = 100,
-        feature_dim: int = 128,
-        num_bins: int = 6,
-    ) -> None:
-        super().__init__()
-        self.encoder1 = AutoFiCNN(in_channels, s, t, feature_dim)
-        self.encoder2 = AutoFiCNN(in_channels, s, t, feature_dim)
-        self.head1 = AutoFiHead(feature_dim, feature_dim, num_bins)
-        self.head2 = AutoFiHead(feature_dim, feature_dim, num_bins)
-
-    def forward(self, x1: torch.Tensor, x2: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        p1 = self.head1(self.encoder1(x1))
-        p2 = self.head2(self.encoder2(x2))
-        return p1, p2
+# -----------------------------------------------------------------------------
+# Augmentation: gaussian_noise.
 
 
-# ---------------------------------------------------------------------------
-# Losses
+def gaussian_noise_bvp(x: torch.Tensor, epsilon: float) -> torch.Tensor:
+    """Additive Gaussian noise per ``self_supervised.py::gaussian_noise``.
 
-
-def _kl(p: torch.Tensor, q: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    return (p * (torch.log(p + eps) - torch.log(q + eps))).sum(dim=-1)
-
-
-def probability_consistency_loss(p1: torch.Tensor, p2: torch.Tensor) -> torch.Tensor:
-    """L_p (eq. 3): symmetric KL between P1 and P2."""
-    return 0.5 * (_kl(p1, p2).mean() + _kl(p2, p1).mean())
-
-
-def _entropy(p: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    return -(p * torch.log(p + eps)).sum(dim=-1)
-
-
-def mutual_info_loss(p1: torch.Tensor, p2: torch.Tensor) -> torch.Tensor:
-    """L_m (eq. 5): h(E[P]) + E[h(P)], summed over both views.
-
-    Paper formula: L_m = h(E[P]) + E[h(P)]. Driving this *down* in the
-    overall L = L_p + λL_m + γL_g schedule corresponds to maximising
-    mutual information (paper §III.B): the model is pushed to (a) make
-    individual predictions confident — low E[h(P)] — and (b) make the
-    batch-averaged prediction uniform — high h(E[P]).
-
-    We follow the paper literally: a single scalar that sums those two
-    terms and is added to the total loss with the +λ sign.
+    Reference noise is ``N(mean=1, std=2)`` over the input shape; ``epsilon``
+    scales the noise. Sampled fresh per call so independent calls yield two
+    independent views.
     """
-    pm1 = p1.mean(dim=0)
-    pm2 = p2.mean(dim=0)
-    return (
-        _entropy(pm1) + _entropy(pm2) + _entropy(p1).mean() + _entropy(p2).mean()
-    )
+    noise = torch.normal(mean=1.0, std=2.0, size=x.shape, device=x.device, dtype=x.dtype)
+    return x + epsilon * noise
 
 
-def _cosine_kernel(a: torch.Tensor, b: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    """K(a, b) = 0.5 (a·b / (||a||·||b||) + 1) — eq. 7."""
-    na = a / (a.norm(dim=-1, keepdim=True) + eps)
-    nb = b / (b.norm(dim=-1, keepdim=True) + eps)
-    return 0.5 * (na @ nb.t() + 1.0)
-
-
-def geometric_loss(p1: torch.Tensor, p2: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    """L_g (eq. 8): KL between Q-distributions of the two views.
-
-    For each sample x^i, Q^i is the row q_{i|j} = K(P^i, P^j) /
-    Σ_{m≠j} K(P^m, P^j). We use cosine similarity (eq. 7).
-    """
-    k1 = _cosine_kernel(p1, p1)
-    k2 = _cosine_kernel(p2, p2)
-    # Zero out self-similarity per the "m ≠ j" qualifier in eq. 6.
-    n = k1.shape[0]
-    mask = 1.0 - torch.eye(n, device=k1.device, dtype=k1.dtype)
-    k1 = k1 * mask
-    k2 = k2 * mask
-    q1 = k1 / (k1.sum(dim=0, keepdim=True) + eps)
-    q2 = k2 / (k2.sum(dim=0, keepdim=True) + eps)
-    return _kl(q1.t(), q2.t()).mean()
-
-
-def autofi_total_loss(
-    p1: torch.Tensor,
-    p2: torch.Tensor,
-    *,
-    lam: float = 1.0,
-    gamma: float = 1000.0,
-) -> tuple[torch.Tensor, dict[str, float]]:
-    """L = L_p + λ·L_m + γ·L_g — paper eq. 9 with λ=1, γ=1000."""
-    lp = probability_consistency_loss(p1, p2)
-    lm = mutual_info_loss(p1, p2)
-    lg = geometric_loss(p1, p2)
-    total = lp + lam * lm + gamma * lg
-    parts = {"L_p": float(lp.item()), "L_m": float(lm.item()), "L_g": float(lg.item())}
-    return total, parts
-
-
-# ---------------------------------------------------------------------------
-# Pre-training loop
-
-def _to_autofi_input(x: torch.Tensor) -> torch.Tensor:
-    """(B, T, S, A) -> (B, A, S, T)."""
-    return x.permute(0, 3, 2, 1).contiguous()
+# -----------------------------------------------------------------------------
+# Training loops.
 
 
 def pretrain_autofi(
-    model: AutoFiGSS,
+    model: AutoFiParallel,
     loader: DataLoader,
     *,
-    epochs: int = 300,
-    lr: float = 0.01,
-    momentum: float = 0.9,
-    sigma: float = 0.05,
-    lam: float = 1.0,
-    gamma: float = 1000.0,
+    epochs: int,
+    lr: float = 1e-3,
+    weight_decay: float = 1.5e-6,
+    tau: float = 1.0,
+    lam1: float = 0.0,
+    lam2: float = 0.5,
     device: str = "cpu",
-    augment_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+    eps_view1_range: tuple[float, float] = (0.0, 2.0),
+    eps_view2_range: tuple[float, float] = (0.1, 2.0),
+    log_every: int = 10,
 ) -> list[float]:
-    """AutoFi GSS training. SGD lr=0.01, momentum=0.9 per the paper.
-
-    Returns the per-epoch mean total-loss list.
-    """
-    model.to(device)
+    """SSL pre-training. Returns per-epoch mean ``final-kde`` losses."""
+    model = model.to(device)
     model.train()
-    optim = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum)
-    aug = augment_fn or (lambda x: autofi_augment(x, sigma=sigma))
-    epoch_losses: list[float] = []
-    for _ in range(epochs):
-        batch_losses: list[float] = []
+    criterion = AutoFiGSSLoss(tau=tau, lam1=lam1, lam2=lam2)
+    optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    import random as _random
+
+    history: list[float] = []
+    for epoch in range(epochs):
+        total = 0.0
+        n = 0
         for batch in loader:
             x = batch[0] if isinstance(batch, (list, tuple)) else batch
             x = x.to(device).float()
-            v1 = _to_autofi_input(aug(x))
-            v2 = _to_autofi_input(aug(x))
-            p1, p2 = model(v1, v2)
-            loss, _ = autofi_total_loss(p1, p2, lam=lam, gamma=gamma)
+            eps1 = _random.uniform(*eps_view1_range)
+            eps2 = _random.uniform(*eps_view2_range)
+            x1 = gaussian_noise_bvp(x, eps1)
+            x2 = gaussian_noise_bvp(x, eps2)
+            feat1, feat2 = model(x1, x2, flag="unsupervised")
+            losses = criterion(feat1, feat2)
+            loss = losses["final-kde"]
             optim.zero_grad()
             loss.backward()
             optim.step()
-            batch_losses.append(float(loss.item()))
-        epoch_losses.append(sum(batch_losses) / max(1, len(batch_losses)))
-    return epoch_losses
+            total += float(loss.item())
+            n += 1
+        avg = total / max(1, n)
+        history.append(avg)
+        if log_every and (epoch + 1) % log_every == 0:
+            print(f"[autofi-ssl] epoch {epoch+1}/{epochs} final-kde={avg:.4f}")
+    return history
+
+
+def linear_probe_autofi(
+    model: AutoFiParallel,
+    train_loader: DataLoader,
+    test_loader: DataLoader,
+    *,
+    epochs: int,
+    lr: float = 1e-3,
+    weight_decay: float = 1e-5,
+    device: str = "cpu",
+    log_every: int = 50,
+) -> dict[str, float]:
+    """Freeze encoders; train ``model.classifier`` with cross-entropy.
+
+    Matches ``self_supervised.py``'s ``Supervised classifier training``: only
+    ``model.classifier.parameters()`` is optimized.
+    """
+    model = model.to(device)
+    optim = torch.optim.Adam(
+        model.classifier.parameters(), lr=lr, weight_decay=weight_decay
+    )
+    ce = nn.CrossEntropyLoss()
+
+    for epoch in range(epochs):
+        model.train()
+        total = 0.0
+        for x, y in train_loader:
+            x = x.to(device).float()
+            y = y.to(device).long()
+            y1, y2 = model(x, x, flag="supervised")
+            loss = ce(y1, y) + ce(y2, y)
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+            total += float(loss.item())
+        if log_every and (epoch + 1) % log_every == 0:
+            print(f"[autofi-probe] epoch {epoch+1}/{epochs} loss={total:.4f}")
+
+    model.eval()
+    correct_1 = 0
+    correct_2 = 0
+    total = 0
+    with torch.no_grad():
+        for x, y in test_loader:
+            x = x.to(device).float()
+            y = y.to(device).long()
+            y1, y2 = model(x, x, flag="supervised")
+            correct_1 += int((y1.argmax(dim=1) == y).sum().item())
+            correct_2 += int((y2.argmax(dim=1) == y).sum().item())
+            total += int(y.numel())
+    return {
+        "accuracy_branch1": correct_1 / max(1, total),
+        "accuracy_branch2": correct_2 / max(1, total),
+        "accuracy": max(correct_1, correct_2) / max(1, total),
+    }
+
+
+# -----------------------------------------------------------------------------
+# Runner entry point used by production_runner.
+
+
+def run_autofi(
+    *,
+    seed: int,
+    ssl_epochs: int = 100,
+    probe_epochs: int = 300,
+    batch_size: int = 64,
+    bvp_root: str = "data/widar3/Widardata",
+    cache_dir: str = "data/widar3/cache",
+    protocol: Literal["sensefi", "cross-subject"] = "sensefi",
+    num_classes: int = NUM_BVP_CLASSES,
+) -> float:
+    """Single-seed AutoFi run on Widar BVP. Returns linear-probe accuracy.
+
+    ``protocol``:
+
+    * ``sensefi``: SSL pre-train on ``Widardata/train/`` (all 22 classes),
+      linear probe trained on the same split, evaluated on
+      ``Widardata/test/``. This is the protocol the AutoFi authors' released
+      code implements.
+    * ``cross-subject``: cross-subject split (train users 5-17 / test users
+      1-4), all 22 classes. Closer to the project comparison protocol.
+    """
+    import random
+
+    import numpy as np
+
+    from .widar_bvp import WidarBVP
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    cache_tag = f"josiah-autofi-{protocol}-bvp"
+    train_ds = WidarBVP(
+        root=bvp_root,
+        split=protocol,
+        train=True,
+        cache_path=f"{cache_dir}/{cache_tag}-train.pt",
+    )
+    test_ds = WidarBVP(
+        root=bvp_root,
+        split=protocol,
+        train=False,
+        cache_path=f"{cache_dir}/{cache_tag}-test.pt",
+    )
+    print(
+        f"[autofi] protocol={protocol}; train={len(train_ds)}, test={len(test_ds)}"
+    )
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
+    probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+
+    model = AutoFiParallel(num_classes=num_classes, hidden_states=256)
+    pretrain_autofi(model, train_loader, epochs=ssl_epochs, device=device)
+    metrics = linear_probe_autofi(
+        model, probe_train_loader, test_loader, epochs=probe_epochs, device=device
+    )
+    print(
+        f"[autofi] probe acc branch1={metrics['accuracy_branch1']:.4f} "
+        f"branch2={metrics['accuracy_branch2']:.4f} max={metrics['accuracy']:.4f}"
+    )
+    return float(metrics["accuracy"])

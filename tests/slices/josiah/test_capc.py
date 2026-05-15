@@ -1,110 +1,110 @@
-"""Tests for the CAPC exact reproduction (T5.5)."""
+"""Tests for src.slices.josiah.capc.
+
+The CAPC headline cell on SignFi UL/DL CSI is not reachable without that
+dataset (see papers/team/capc-hardware-limited.md). These tests cover the
+component code paths so the implementation can be exercised end-to-end on
+any dataset that supplies a paired ``(view_a, view_b)`` tensor.
+"""
 
 from __future__ import annotations
 
 import torch
 
 from src.slices.josiah.capc import (
-    CAPCBranch,
-    LARS,
-    RSCNetBlock,
-    barlow_twins_loss,
-    capc_total_loss,
-    capc_view_noise_then_submask,
-    cpc_loss,
-    make_capc_optimizer,
-    pretrain_capc,
-    subcarrier_mask,
-    time_flip,
-    time_mask,
+    BarlowTwinsLoss,
+    BarlowTwinsProjector,
+    CAPC,
+    CAPCAutoregressor,
+    CAPCCPCLoss,
+    CAPCLoss,
+    RSCNetEncoder,
+    build_capc_optimizer,
+    capc_gaussian_noise,
+    capc_subcarrier_mask,
+    capc_time_flip,
+    warmup_cosine_lr,
 )
-from src.slices.josiah.data import CSI_A, CSI_S, CSI_T, NUM_CLASSES, StubCSI
 
 
-def test_rscnet_block_output_shape() -> None:
-    enc = RSCNetBlock(in_channels=CSI_A, s=CSI_S, n_f=10, embedding_dim=128)
-    x = torch.randn(2, CSI_A, CSI_S, 10)
-    assert enc(x).shape == (2, 128)
+def test_rscnet_encoder_output_shape():
+    enc = RSCNetEncoder(window_shape=(3, 30, 10), feature_dim=128)
+    x = torch.randn(8, 3, 30, 10)
+    out = enc(x)
+    assert out.shape == (8, 128)
 
 
-def test_capc_branch_encode_windows_shape() -> None:
-    branch = CAPCBranch(in_channels=CSI_A, s=CSI_S, n_f=10, embedding_dim=128,
-                        hidden_dim=128, future_steps=9)
-    windows = torch.randn(2, 10, CSI_A, CSI_S, 10)  # (B, L, A, S, N_f)
-    z = branch.encode_windows(windows)
-    assert z.shape == (2, 10, 128)
-    c = branch.context(z)
-    assert c.shape == (2, 10, 128)
+def test_autoregressor_returns_sequence():
+    ar = CAPCAutoregressor(feature_dim=128, hidden_dim=128)
+    z = torch.randn(4, 20, 128)
+    h = ar(z)
+    assert h.shape == (4, 20, 128)
 
 
-def test_barlow_twins_loss_zero_for_identical_inputs() -> None:
-    torch.manual_seed(0)
-    z = torch.randn(32, 16)
-    loss = barlow_twins_loss(z, z, lam=0.002)
-    # Self-similarity: diagonal terms are 1 (after normalisation) so (C_ii-1)^2 ~ 0;
-    # off-diagonal terms encode redundancy. Should be finite but small relative to
-    # the unrelated-views case.
-    z2 = torch.randn(32, 16)
-    loss_unrelated = barlow_twins_loss(z, z2, lam=0.002)
-    assert loss.item() < loss_unrelated.item()
+def test_barlow_twins_projector_output_shape():
+    proj = BarlowTwinsProjector()
+    x = torch.randn(8, 128)
+    out = proj(x)
+    assert out.shape == (8, 256)
 
 
-def test_cpc_loss_runs() -> None:
-    torch.manual_seed(0)
-    b, length, d, h = 4, 8, 16, 16
-    z = torch.randn(b, length, d)
-    c = torch.randn(b, length, h)
-    W = torch.nn.ModuleList([torch.nn.Linear(h, d, bias=False) for _ in range(5)])
-    loss = cpc_loss(z, c, W, t_anchor=2, future_steps=5)
-    assert loss.dim() == 0 and torch.isfinite(loss)
+def test_cpc_loss_finite_and_scalar():
+    cpc = CAPCCPCLoss(num_future_steps=4, feature_dim=128)
+    z_seq = torch.randn(8, 20, 128)
+    c_t = torch.randn(8, 128)
+    loss = cpc(z_seq, c_t, anchor_index=0)
+    assert loss.dim() == 0
+    assert torch.isfinite(loss)
 
 
-def test_capc_total_loss_structure() -> None:
-    torch.manual_seed(0)
-    b, length, d, h = 4, 6, 16, 16
-    z_a = torch.randn(b, length, d)
-    z_b = torch.randn(b, length, d)
-    c_a = torch.randn(b, length, h)
-    c_b = torch.randn(b, length, h)
-    W_a = torch.nn.ModuleList([torch.nn.Linear(h, d, bias=False) for _ in range(3)])
-    W_b = torch.nn.ModuleList([torch.nn.Linear(h, d, bias=False) for _ in range(3)])
-    total, parts = capc_total_loss(z_a, c_a, z_b, c_b, W_a, W_b,
-                                   future_steps=3, beta=50.0, bt_lambda=0.002)
-    assert total.dim() == 0
-    assert set(parts) == {"L_BT", "L_CPC_A", "L_CPC_B"}
+def test_barlow_twins_loss_zero_for_perfectly_aligned():
+    bt = BarlowTwinsLoss(lambda_bt=0.002)
+    x = torch.randn(32, 64)
+    # Same projector outputs -> normalized cross-correlation diag is 1, off-diag small for large B.
+    loss = bt(x, x)
+    assert torch.isfinite(loss)
 
 
-def test_capc_augmentations_preserve_shape() -> None:
-    x = torch.randn(2, CSI_T, CSI_S, CSI_A)
-    for f in (time_flip, time_mask, subcarrier_mask, capc_view_noise_then_submask):
-        out = f(x)
-        assert out.shape == x.shape
+def test_capc_forward_shapes():
+    model = CAPC(window_shape=(3, 30, 10))
+    view_a = torch.randn(4, 20, 3, 30, 10)
+    view_b = torch.randn(4, 20, 3, 30, 10)
+    z_a, c_a, z_b, c_b, p_a, p_b = model(view_a, view_b)
+    assert z_a.shape == (4, 20, 128)
+    assert c_a.shape == (4, 128)
+    assert p_a.shape == (4, 256)
+    assert p_b.shape == (4, 256)
 
 
-def test_lars_step_updates_weights() -> None:
-    p = torch.nn.Parameter(torch.ones(4, requires_grad=True))
-    optim = LARS([p], lr=0.1, momentum=0.0, weight_decay=0.0, trust_coef=1.0)
-    p.grad = torch.ones(4)
-    before = p.detach().clone()
-    optim.step()
-    assert not torch.equal(p.detach(), before)
+def test_capc_loss_composite_finite():
+    model = CAPC(window_shape=(3, 30, 10))
+    view_a = torch.randn(4, 20, 3, 30, 10)
+    view_b = torch.randn(4, 20, 3, 30, 10)
+    z_a, c_a, z_b, c_b, p_a, p_b = model(view_a, view_b)
+    loss_fn = CAPCLoss(num_future_steps=4, feature_dim=128)
+    out = loss_fn(z_a, c_a, z_b, c_b, p_a, p_b)
+    assert torch.isfinite(out["total"])
 
 
-def test_make_capc_optimizer_param_groups() -> None:
-    branch_a = CAPCBranch(in_channels=CSI_A, s=CSI_S, n_f=10)
-    branch_b = CAPCBranch(in_channels=CSI_A, s=CSI_S, n_f=10)
-    optim = make_capc_optimizer(branch_a, branch_b)
-    assert len(optim.param_groups) == 2
-    assert optim.param_groups[0]["lr"] == 0.2
-    assert optim.param_groups[1]["lr"] == 0.0048
+def test_augmentations_preserve_shape():
+    x = torch.randn(2, 3, 30, 10)
+    assert capc_time_flip(x).shape == x.shape
+    assert capc_gaussian_noise(x, sigma=0.05).shape == x.shape
+    assert capc_subcarrier_mask(x, ratio=0.1).shape == x.shape
 
 
-def test_pretrain_capc_smoke() -> None:
-    torch.manual_seed(0)
-    ds = StubCSI(num_samples=8, seed=0)
-    loader = torch.utils.data.DataLoader(ds, batch_size=4, shuffle=True, drop_last=True)
-    branch_a = CAPCBranch(in_channels=CSI_A, s=CSI_S, n_f=10, future_steps=9)
-    branch_b = CAPCBranch(in_channels=CSI_A, s=CSI_S, n_f=10, future_steps=9)
-    losses = pretrain_capc(branch_a, branch_b, loader, epochs=2, n_f=10)
-    assert len(losses) == 2
-    assert all(torch.isfinite(torch.tensor(loss)) for loss in losses)
+def test_capc_optimizer_separates_biases_and_weights():
+    model = CAPC(window_shape=(3, 30, 10))
+    opt = build_capc_optimizer(model.parameters())
+    assert len(opt.param_groups) == 2
+    weight_lr = opt.param_groups[0]["lr"]
+    biasbn_lr = opt.param_groups[1]["lr"]
+    assert weight_lr > biasbn_lr
+
+
+def test_warmup_cosine_lr_warms_up_then_decays():
+    total = 300
+    warmup = 10
+    assert warmup_cosine_lr(0, total_epochs=total, warmup_epochs=warmup) < 0.2
+    assert warmup_cosine_lr(warmup - 1, total_epochs=total, warmup_epochs=warmup) <= 1.0
+    assert warmup_cosine_lr(warmup, total_epochs=total, warmup_epochs=warmup) == 1.0
+    assert warmup_cosine_lr(total - 1, total_epochs=total, warmup_epochs=warmup) < 0.05

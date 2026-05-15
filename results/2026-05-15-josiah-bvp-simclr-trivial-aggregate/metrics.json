@@ -1,0 +1,16 @@
+{
+  "mean": 0.44983978889831305,
+  "metric": "accuracy",
+  "n": 3,
+  "sources": [
+    "results\\2026-05-15-josiah-bvp-simclr-trivial-seed42\\metrics.json",
+    "results\\2026-05-15-josiah-bvp-simclr-trivial-seed1337\\metrics.json",
+    "results\\2026-05-15-josiah-bvp-simclr-trivial-seed2024\\metrics.json"
+  ],
+  "std": 0.017666713414995896,
+  "values": [
+    0.43765903307888043,
+    0.4417585524455753,
+    0.47010178117048346
+  ]
+}

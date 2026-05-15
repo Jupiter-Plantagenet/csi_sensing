@@ -1,0 +1,16 @@
+{
+  "mean": 0.4823532183583074,
+  "metric": "accuracy",
+  "n": 3,
+  "sources": [
+    "results\\2026-05-15-josiah-bvp-simclr-handcrafted-seed42\\metrics.json",
+    "results\\2026-05-15-josiah-bvp-simclr-handcrafted-seed1337\\metrics.json",
+    "results\\2026-05-15-josiah-bvp-simclr-handcrafted-seed2024\\metrics.json"
+  ],
+  "std": 0.004553511503399456,
+  "values": [
+    0.4851569126378287,
+    0.4770992366412214,
+    0.4848035057958722
+  ]
+}

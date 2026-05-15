@@ -1,19 +1,14 @@
-"""End-to-end run for Slice 5.
+"""End-to-end runs for Slice 5 project baselines.
 
-Three baselines wired through `--mode`:
+This module intentionally contains only the project-owned baselines:
 
-- `mode=supervised` (T5.1 / T5.2): cross-entropy on the full classifier.
-- `mode=simclr-trivial` (T5.3): SimCLR pre-train with `random_crop` only,
-  then frozen-encoder linear probe.
-- `mode=simclr-handcrafted` (T5.6): SimCLR pre-train with the
-  hand-crafted-augmentation baseline (added in T5.6).
+- `supervised` (T5.1 / T5.2): cross-entropy on the full classifier.
+- `simclr-trivial` (T5.3): SimCLR with random crop only.
+- `simclr-handcrafted` (T5.6): SimCLR with Gaussian noise + subcarrier mask.
 
-Each mode supports `--real` to swap stub data for real Widar3.0 cross-subject.
-
-Run:
-    python -m src.slices.josiah.run                                   # supervised stub
-    python -m src.slices.josiah.run --real --epochs 10                # supervised real
-    python -m src.slices.josiah.run --mode simclr-trivial --real      # T5.3 real
+Published AutoFi/CAPC reproductions are not exposed here until exact
+implementations exist. Adapted approximations were removed so they cannot be
+mistaken for published-baseline reproductions.
 """
 
 from __future__ import annotations
@@ -26,9 +21,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from .augmentations import gaussian_then_mask, random_crop
-from .autofi import AutoFiCNN, AutoFiGSS, pretrain_autofi
-from .capc import CAPCBranch, pretrain_capc
-from .data import CSI_A, CSI_S, CSI_T, NUM_CLASSES, StubCSI, Widar3CrossSubject
+from .data import NUM_CLASSES, StubCSI, Widar3CrossSubject
 from .encoder import SupervisedClassifier, TinyCNN, count_parameters
 from .eval import evaluate, linear_probe, train_supervised
 from .ssl import SimCLR, pretrain_simclr
@@ -40,87 +33,52 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
 
 
-@torch.no_grad()
-def _autofi_linear_probe(
-    encoder: AutoFiCNN,
-    train_loader: DataLoader,
-    test_loader: DataLoader,
-    *,
-    device: str,
-    seed: int,
-) -> float:
-    """Frozen-encoder linear probe for AutoFi (expects (B, A, S, T) input)."""
-    from sklearn.linear_model import LogisticRegression
-
-    encoder.eval().to(device)
-
-    def _features(loader: DataLoader) -> tuple[np.ndarray, np.ndarray]:
-        feats: list[np.ndarray] = []
-        labels: list[np.ndarray] = []
-        for x, y in loader:
-            x = x.to(device).float().permute(0, 3, 2, 1).contiguous()
-            h = encoder(x)
-            feats.append(h.cpu().numpy())
-            labels.append(np.asarray(y))
-        return np.concatenate(feats, axis=0), np.concatenate(labels, axis=0)
-
-    tr_x, tr_y = _features(train_loader)
-    te_x, te_y = _features(test_loader)
-    clf = LogisticRegression(max_iter=1000, random_state=seed).fit(tr_x, tr_y)
-    return float(np.mean(clf.predict(te_x) == te_y))
+def _infer_sample_shape(ds: torch.utils.data.Dataset) -> tuple[int, int, int]:
+    sample, _ = ds[0]
+    if sample.ndim != 3:
+        raise ValueError(f"expected sample (T, S, A); got {tuple(sample.shape)}")
+    return int(sample.shape[0]), int(sample.shape[1]), int(sample.shape[2])
 
 
-@torch.no_grad()
-def _capc_linear_probe(
-    branch: CAPCBranch,
-    train_loader: DataLoader,
-    test_loader: DataLoader,
-    *,
-    device: str,
-    seed: int,
-    n_f: int,
-) -> float:
-    """Frozen-encoder linear probe for CAPC.
-
-    Per §IV-B "linear classifier C_phi is fine-tuned with labelled CSI
-    based on the concatenated representations from all windows generated
-    by the pre-trained encoder E_theta". So we encode every window and
-    concatenate the per-window embeddings as the feature vector.
-    """
-    from sklearn.linear_model import LogisticRegression
-    from .capc import _split_windows, _to_capc_input
-
-    branch.eval().to(device)
-
-    def _features(loader: DataLoader) -> tuple[np.ndarray, np.ndarray]:
-        feats: list[np.ndarray] = []
-        labels: list[np.ndarray] = []
-        for x, y in loader:
-            x = x.to(device).float()
-            windows = _split_windows(_to_capc_input(x), n_f)
-            z = branch.encode_windows(windows)
-            feats.append(z.flatten(1).cpu().numpy())
-            labels.append(np.asarray(y))
-        return np.concatenate(feats, axis=0), np.concatenate(labels, axis=0)
-
-    tr_x, tr_y = _features(train_loader)
-    te_x, te_y = _features(test_loader)
-    clf = LogisticRegression(max_iter=1000, random_state=seed).fit(tr_x, tr_y)
-    return float(np.mean(clf.predict(te_x) == te_y))
+def _infer_in_channels(ds: torch.utils.data.Dataset) -> int:
+    _t, s, a = _infer_sample_shape(ds)
+    return s * a
 
 
 def _make_datasets(
-    real: bool, seed: int, data_root: str, cache_dir: str
+    real: bool,
+    seed: int,
+    data_root: str,
+    cache_dir: str,
+    representation: str,
+    time_steps: int,
+    max_files: int | None,
+    receivers: list[int] | None = None,
 ) -> tuple[torch.utils.data.Dataset, torch.utils.data.Dataset]:
     if real:
+        rx_tag = "r" + "".join(str(r) for r in receivers) if receivers else "rcanon"
+        cache_tag = f"josiah-{representation}-T{time_steps}-{rx_tag}-max{max_files or 'all'}"
         train_ds = Widar3CrossSubject(
-            root=data_root, train=True, cache_path=f"{cache_dir}/josiah_train.pt"
+            root=data_root,
+            train=True,
+            cache_path=f"{cache_dir}/{cache_tag}-train.pt",
+            representation=representation,
+            time_steps=time_steps,
+            max_files=max_files,
+            receivers=receivers,
         )
         test_ds = Widar3CrossSubject(
-            root=data_root, train=False, cache_path=f"{cache_dir}/josiah_test.pt"
+            root=data_root,
+            train=False,
+            cache_path=f"{cache_dir}/{cache_tag}-test.pt",
+            representation=representation,
+            time_steps=time_steps,
+            max_files=max_files,
+            receivers=receivers,
         )
         print(
-            f"[josiah] real Widar3.0 cross-subject; "
+            f"[josiah] real Widar3.0 cross-subject "
+            f"(receivers={receivers or 'canonical[1]'}); "
             f"train={len(train_ds)}, test={len(test_ds)}"
         )
     else:
@@ -138,19 +96,27 @@ def main(
     real: bool = False,
     data_root: str = "data/widar3/raw",
     cache_dir: str = "data/widar3/cache",
+    representation: str = "real-imag",
+    time_steps: int = 200,
+    max_files: int | None = None,
+    receivers: list[int] | None = None,
 ) -> float:
     set_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    train_ds, test_ds = _make_datasets(real, seed, data_root, cache_dir)
+    train_ds, test_ds = _make_datasets(
+        real, seed, data_root, cache_dir, representation, time_steps, max_files,
+        receivers=receivers,
+    )
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True, drop_last=(mode != "supervised")
     )
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
     if mode == "supervised":
+        in_channels = _infer_in_channels(train_ds)
         model = SupervisedClassifier(
-            in_channels=CSI_S * CSI_A, num_classes=NUM_CLASSES, feature_dim=128
+            in_channels=in_channels, num_classes=NUM_CLASSES, feature_dim=128
         )
         print(f"[josiah] supervised model params: {count_parameters(model)}")
         losses = train_supervised(
@@ -161,64 +127,11 @@ def main(
         print(f"[josiah] supervised top-1 accuracy: {acc:.3f}")
         return acc
 
-    if mode == "capc":
-        # T5.5: CAPC exact reproduction (Barahimi et al. 2024). Two-branch
-        # encoder + GRU + per-step bilinear predictors; hybrid loss
-        # L = L_BT + beta*(L_CPC^A + L_CPC^B), beta=50. LARS optimiser.
-        # The paper's `dual view` augmentation needs uplink + downlink CSI;
-        # Widar3.0 ships only one direction, so we use the documented
-        # CAPC* fallback (noise + subcarrier mask) — Table I row.
-        branch_a = CAPCBranch(in_channels=CSI_A, s=CSI_S, n_f=10,
-                              embedding_dim=128, hidden_dim=128, future_steps=9)
-        branch_b = CAPCBranch(in_channels=CSI_A, s=CSI_S, n_f=10,
-                              embedding_dim=128, hidden_dim=128, future_steps=9)
-        params = count_parameters(branch_a) + count_parameters(branch_b)
-        print(f"[T5.5] CAPC twin-branch params: {params}")
-        losses = pretrain_capc(
-            branch_a, branch_b, train_loader,
-            epochs=epochs, n_f=10, beta=50.0, bt_lambda=0.002, device=device,
-        )
-        print(f"[T5.5] CAPC pre-train losses: {[round(loss, 4) for loss in losses]}")
-        probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
-        acc = _capc_linear_probe(
-            branch_a, probe_train_loader, test_loader, device=device, seed=seed, n_f=10
-        )
-        print(f"[T5.5] CAPC linear-probe accuracy: {acc:.3f}")
-        return acc
-
-    if mode == "autofi":
-        # T5.4: AutoFi exact reproduction (Yang et al. 2022). Twin-branch GSS
-        # pre-training on (A=3, S=30, T=CSI_T) Conv2d inputs, then linear-probe
-        # the first feature extractor on the labelled set. Paper uses SGD
-        # lr=0.01 momentum=0.9 batch 128 for 300 epochs; CLI defaults stay
-        # small for the smoke loop.
-        gss = AutoFiGSS(in_channels=CSI_A, s=CSI_S, t=CSI_T, feature_dim=128,
-                        num_bins=NUM_CLASSES)
-        print(f"[T5.4] GSS params: {count_parameters(gss)}")
-        losses = pretrain_autofi(
-            gss,
-            train_loader,
-            epochs=epochs,
-            lr=0.01,
-            momentum=0.9,
-            sigma=0.05,
-            lam=1.0,
-            gamma=1000.0,
-            device=device,
-        )
-        print(f"[T5.4] GSS pre-train losses: {[round(loss, 4) for loss in losses]}")
-
-        probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
-        acc = _autofi_linear_probe(
-            gss.encoder1, probe_train_loader, test_loader, device=device, seed=seed
-        )
-        print(f"[T5.4] AutoFi linear-probe accuracy: {acc:.3f}")
-        return acc
-
     if mode in ("simclr-trivial", "simclr-handcrafted"):
         tag = "T5.3" if mode == "simclr-trivial" else "T5.6"
         augment_fn = random_crop if mode == "simclr-trivial" else gaussian_then_mask
-        encoder = TinyCNN(in_channels=CSI_S * CSI_A, feature_dim=128)
+        in_channels = _infer_in_channels(train_ds)
+        encoder = TinyCNN(in_channels=in_channels, feature_dim=128)
         print(f"[{tag}] encoder params: {count_parameters(encoder)}")
         ssl_model = SimCLR(encoder, feature_dim=128, projection_dim=64)
         losses = pretrain_simclr(
@@ -232,7 +145,6 @@ def main(
         )
         print(f"[{tag}] SSL pre-train losses: {[round(loss, 4) for loss in losses]}")
 
-        # Linear probe on the frozen encoder
         probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
         acc = linear_probe(
             ssl_model.encoder,
@@ -251,13 +163,12 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--mode",
-        choices=["supervised", "simclr-trivial", "simclr-handcrafted", "autofi", "capc"],
+        choices=["supervised", "simclr-trivial", "simclr-handcrafted"],
         default="supervised",
         help=(
-            "Baseline mode: supervised (T5.1/T5.2), simclr-trivial (T5.3), "
-            "simclr-handcrafted (T5.6, the comparison-column row), "
-            "autofi (T5.4, exact reproduction of Yang et al. 2022), "
-            "capc (T5.5, exact reproduction of Barahimi et al. 2024)."
+            "Project baseline mode: supervised (T5.1/T5.2), "
+            "simclr-trivial (T5.3), or simclr-handcrafted (T5.6). "
+            "AutoFi/CAPC exact reproductions require separate exact code."
         ),
     )
     p.add_argument("--seed", type=int, default=42)
@@ -270,11 +181,24 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--data-root", default="data/widar3/raw")
     p.add_argument("--cache-dir", default="data/widar3/cache")
+    p.add_argument("--representation", choices=["real-imag", "magnitude"], default="real-imag")
+    p.add_argument("--time-steps", type=int, default=200)
+    p.add_argument("--max-files", type=int, default=None)
+    p.add_argument(
+        "--receivers",
+        default=None,
+        help="CSV receiver IDs e.g. 1,2,3. Default: canonical [1] per roadmap.",
+    )
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
+    receivers = (
+        [int(r) for r in args.receivers.split(",") if r]
+        if args.receivers
+        else None
+    )
     main(
         mode=args.mode,
         seed=args.seed,
@@ -283,4 +207,8 @@ if __name__ == "__main__":
         real=args.real,
         data_root=args.data_root,
         cache_dir=args.cache_dir,
+        representation=args.representation,
+        time_steps=args.time_steps,
+        max_files=args.max_files,
+        receivers=receivers,
     )

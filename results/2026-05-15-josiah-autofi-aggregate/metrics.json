@@ -1,0 +1,12 @@
+{
+  "mean": 0.39892275956910384,
+  "metric": "accuracy",
+  "n": 1,
+  "sources": [
+    "results\\2026-05-15-josiah-autofi-seed42\\metrics.json"
+  ],
+  "std": 0.0,
+  "values": [
+    0.39892275956910384
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "mean": 0.6289228159457168,
+  "metric": "accuracy",
+  "n": 3,
+  "sources": [
+    "results\\2026-05-15-josiah-mae-seed42\\metrics.json",
+    "results\\2026-05-15-josiah-mae-seed1337\\metrics.json",
+    "results\\2026-05-15-josiah-mae-seed2024\\metrics.json"
+  ],
+  "std": 0.009754028837998308,
+  "values": [
+    0.6289228159457168,
+    0.638676844783715,
+    0.6191687871077184
+  ]
+}

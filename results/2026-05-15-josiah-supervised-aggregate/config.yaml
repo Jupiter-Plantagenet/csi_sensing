@@ -1,0 +1,13 @@
+batch_size: 64
+counts_as_published_reproduction: false
+epochs: 50
+max_files: null
+method: supervised
+method_kind: project-baseline
+owner: josiah
+representation: real-imag
+seeds:
+  - 42
+split: cross-subject
+test_dates: null
+time_steps: 200

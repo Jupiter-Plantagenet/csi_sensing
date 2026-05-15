@@ -1,0 +1,16 @@
+batch_size: 64
+bvp_root: data/widar3/Widardata
+counts_as_published_reproduction: false
+epochs: 300
+max_files: null
+method: bvp-simclr-handcrafted
+method_kind: project-baseline
+owner: josiah
+representation: bvp
+seeds:
+  - 42
+  - 1337
+  - 2024
+split: cross-subject-bvp
+test_dates: null
+time_steps: bvp-22x20x20

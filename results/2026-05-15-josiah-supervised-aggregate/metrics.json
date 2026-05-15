@@ -1,0 +1,12 @@
+{
+  "mean": 0.1577889447236181,
+  "metric": "accuracy",
+  "n": 1,
+  "sources": [
+    "results\\2026-05-15-josiah-supervised-seed42\\metrics.json"
+  ],
+  "std": 0.0,
+  "values": [
+    0.1577889447236181
+  ]
+}

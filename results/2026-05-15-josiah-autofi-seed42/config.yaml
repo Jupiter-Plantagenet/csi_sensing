@@ -1,0 +1,13 @@
+batch_size: 64
+bvp_root: data/widar3/Widardata
+counts_as_published_reproduction: true
+epochs: 100
+max_files: null
+method: autofi
+method_kind: published-baseline
+owner: josiah
+representation: bvp
+seed: 42
+split: sensefi-bvp
+test_dates: null
+time_steps: bvp-22x20x20
