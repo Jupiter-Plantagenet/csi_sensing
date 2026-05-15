@@ -1,0 +1,7 @@
+{
+  "dataset": "signfi",
+  "eval_env": "home",
+  "instances_per_class": 10,
+  "num_classes": 276,
+  "pretrain_env": "home"
+}

@@ -1,0 +1,12 @@
+{
+  "mean": 1.0,
+  "metric": "accuracy",
+  "n": 1,
+  "sources": [
+    "results\\2026-05-15-josiah-capc-lab-to-home-seed42\\metrics.json"
+  ],
+  "std": 0.0,
+  "values": [
+    1.0
+  ]
+}

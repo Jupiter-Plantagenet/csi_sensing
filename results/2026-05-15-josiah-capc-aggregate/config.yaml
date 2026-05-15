@@ -1,0 +1,14 @@
+batch_size: 32
+bvp_root: null
+counts_as_published_reproduction: true
+epochs: 2
+max_files: null
+method: capc
+method_kind: published-baseline
+owner: josiah
+representation: signfi-csi-amplitude
+seeds:
+  - 42
+split: signfi-home
+test_dates: null
+time_steps: signfi-3x30x200

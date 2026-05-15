@@ -1,0 +1,13 @@
+batch_size: 128
+bvp_root: null
+counts_as_published_reproduction: true
+epochs: 300
+max_files: null
+method: capc-lab-to-home
+method_kind: published-baseline
+owner: josiah
+representation: signfi-csi-amplitude
+seed: 42
+split: signfi-lab-to-home
+test_dates: null
+time_steps: signfi-3x30x200
