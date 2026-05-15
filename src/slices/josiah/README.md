@@ -22,7 +22,7 @@ The printed accuracy after T5.1 is at chance level — stub data has random labe
 
 1. **T5.2** — Supervised, no SSL. Real cross-subject data, 3 seeds.
 2. **T5.3** — SimCLR with trivial augmentation (random crop only).
-3. **T5.4** — Exact AutoFi reproduction (their CNN-LSTM, their pretext, their schedule).
+3. **T5.4** — Exact AutoFi reproduction (Yang et al. 2022). 6-layer Conv2d (Table I), twin GSS branches, L = L_p + λL_m + γL_g with λ=1, γ=1000 (eq. 9), SGD lr=0.01 momentum 0.9 for 300 epochs. Module: `autofi.py`. Run: `python -m src.slices.josiah.run --mode autofi`.
 4. **T5.5** — Exact CAPC reproduction (their encoder, their CPC + Barlow Twins setup).
 5. **T5.6** — Hand-crafted-aug SimCLR (Gaussian noise + random subcarrier mask). **The comparison column for slices 1, 2, 4, 6.**
 

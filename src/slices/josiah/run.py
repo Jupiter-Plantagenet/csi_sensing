@@ -26,7 +26,8 @@ import torch
 from torch.utils.data import DataLoader
 
 from .augmentations import gaussian_then_mask, random_crop
-from .data import CSI_A, CSI_S, NUM_CLASSES, StubCSI, Widar3CrossSubject
+from .autofi import AutoFiCNN, AutoFiGSS, pretrain_autofi
+from .data import CSI_A, CSI_S, CSI_T, NUM_CLASSES, StubCSI, Widar3CrossSubject
 from .encoder import SupervisedClassifier, TinyCNN, count_parameters
 from .eval import evaluate, linear_probe, train_supervised
 from .ssl import SimCLR, pretrain_simclr
@@ -36,6 +37,36 @@ def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+
+
+@torch.no_grad()
+def _autofi_linear_probe(
+    encoder: AutoFiCNN,
+    train_loader: DataLoader,
+    test_loader: DataLoader,
+    *,
+    device: str,
+    seed: int,
+) -> float:
+    """Frozen-encoder linear probe for AutoFi (expects (B, A, S, T) input)."""
+    from sklearn.linear_model import LogisticRegression
+
+    encoder.eval().to(device)
+
+    def _features(loader: DataLoader) -> tuple[np.ndarray, np.ndarray]:
+        feats: list[np.ndarray] = []
+        labels: list[np.ndarray] = []
+        for x, y in loader:
+            x = x.to(device).float().permute(0, 3, 2, 1).contiguous()
+            h = encoder(x)
+            feats.append(h.cpu().numpy())
+            labels.append(np.asarray(y))
+        return np.concatenate(feats, axis=0), np.concatenate(labels, axis=0)
+
+    tr_x, tr_y = _features(train_loader)
+    te_x, te_y = _features(test_loader)
+    clf = LogisticRegression(max_iter=1000, random_state=seed).fit(tr_x, tr_y)
+    return float(np.mean(clf.predict(te_x) == te_y))
 
 
 def _make_datasets(
@@ -90,6 +121,35 @@ def main(
         print(f"[josiah] supervised top-1 accuracy: {acc:.3f}")
         return acc
 
+    if mode == "autofi":
+        # T5.4: AutoFi exact reproduction (Yang et al. 2022). Twin-branch GSS
+        # pre-training on (A=3, S=30, T=CSI_T) Conv2d inputs, then linear-probe
+        # the first feature extractor on the labelled set. Paper uses SGD
+        # lr=0.01 momentum=0.9 batch 128 for 300 epochs; CLI defaults stay
+        # small for the smoke loop.
+        gss = AutoFiGSS(in_channels=CSI_A, s=CSI_S, t=CSI_T, feature_dim=128,
+                        num_bins=NUM_CLASSES)
+        print(f"[T5.4] GSS params: {count_parameters(gss)}")
+        losses = pretrain_autofi(
+            gss,
+            train_loader,
+            epochs=epochs,
+            lr=0.01,
+            momentum=0.9,
+            sigma=0.05,
+            lam=1.0,
+            gamma=1000.0,
+            device=device,
+        )
+        print(f"[T5.4] GSS pre-train losses: {[round(loss, 4) for loss in losses]}")
+
+        probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
+        acc = _autofi_linear_probe(
+            gss.encoder1, probe_train_loader, test_loader, device=device, seed=seed
+        )
+        print(f"[T5.4] AutoFi linear-probe accuracy: {acc:.3f}")
+        return acc
+
     if mode in ("simclr-trivial", "simclr-handcrafted"):
         tag = "T5.3" if mode == "simclr-trivial" else "T5.6"
         augment_fn = random_crop if mode == "simclr-trivial" else gaussian_then_mask
@@ -126,11 +186,12 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--mode",
-        choices=["supervised", "simclr-trivial", "simclr-handcrafted"],
+        choices=["supervised", "simclr-trivial", "simclr-handcrafted", "autofi"],
         default="supervised",
         help=(
             "Baseline mode: supervised (T5.1/T5.2), simclr-trivial (T5.3), "
-            "simclr-handcrafted (T5.6, the comparison-column row)."
+            "simclr-handcrafted (T5.6, the comparison-column row), "
+            "autofi (T5.4, exact reproduction of Yang et al. 2022)."
         ),
     )
     p.add_argument("--seed", type=int, default=42)
