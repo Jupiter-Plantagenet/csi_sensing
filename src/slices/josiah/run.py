@@ -25,7 +25,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from .augmentations import random_crop
+from .augmentations import gaussian_then_mask, random_crop
 from .data import CSI_A, CSI_S, NUM_CLASSES, StubCSI, Widar3CrossSubject
 from .encoder import SupervisedClassifier, TinyCNN, count_parameters
 from .eval import evaluate, linear_probe, train_supervised
@@ -90,9 +90,11 @@ def main(
         print(f"[josiah] supervised top-1 accuracy: {acc:.3f}")
         return acc
 
-    if mode == "simclr-trivial":
+    if mode in ("simclr-trivial", "simclr-handcrafted"):
+        tag = "T5.3" if mode == "simclr-trivial" else "T5.6"
+        augment_fn = random_crop if mode == "simclr-trivial" else gaussian_then_mask
         encoder = TinyCNN(in_channels=CSI_S * CSI_A, feature_dim=128)
-        print(f"[T5.3] encoder params: {count_parameters(encoder)}")
+        print(f"[{tag}] encoder params: {count_parameters(encoder)}")
         ssl_model = SimCLR(encoder, feature_dim=128, projection_dim=64)
         losses = pretrain_simclr(
             ssl_model,
@@ -100,10 +102,10 @@ def main(
             epochs=epochs,
             lr=1e-3,
             temperature=0.5,
-            augment_fn=random_crop,
+            augment_fn=augment_fn,
             device=device,
         )
-        print(f"[T5.3] SSL pre-train losses: {[round(loss, 4) for loss in losses]}")
+        print(f"[{tag}] SSL pre-train losses: {[round(loss, 4) for loss in losses]}")
 
         # Linear probe on the frozen encoder
         probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
@@ -114,7 +116,7 @@ def main(
             device=device,
             seed=seed,
         )
-        print(f"[T5.3] linear-probe accuracy: {acc:.3f}")
+        print(f"[{tag}] linear-probe accuracy: {acc:.3f}")
         return acc
 
     raise ValueError(f"unknown mode: {mode!r}")
@@ -124,9 +126,12 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--mode",
-        choices=["supervised", "simclr-trivial"],
+        choices=["supervised", "simclr-trivial", "simclr-handcrafted"],
         default="supervised",
-        help="Baseline mode. T5.6's simclr-handcrafted lands later.",
+        help=(
+            "Baseline mode: supervised (T5.1/T5.2), simclr-trivial (T5.3), "
+            "simclr-handcrafted (T5.6, the comparison-column row)."
+        ),
     )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--epochs", type=int, default=2)
