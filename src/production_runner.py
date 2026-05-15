@@ -161,6 +161,11 @@ METHODS: dict[str, tuple[str, Callable[..., float], str, str]] = {
     "bvp-supervised": ("josiah", _josiah_bvp("supervised"), "cross-subject-bvp", "project-baseline"),
     "bvp-simclr-trivial": ("josiah", _josiah_bvp("simclr-trivial"), "cross-subject-bvp", "project-baseline"),
     "bvp-simclr-handcrafted": ("josiah", _josiah_bvp("simclr-handcrafted"), "cross-subject-bvp", "project-baseline"),
+    "bvp-doppler": ("george", _josiah_bvp("simclr-doppler"), "cross-subject-bvp", "proposed-method"),
+    "bvp-static-perturb": ("chigozie", _josiah_bvp("simclr-static-perturb"), "cross-subject-bvp", "proposed-method"),
+    "bvp-velocity-jitter": ("collins", _josiah_bvp("simclr-velocity-jitter"), "cross-subject-bvp", "proposed-method"),
+    "bvp-coherent-mask": ("ihunanya", _josiah_bvp("simclr-coherent-mask"), "cross-subject-bvp", "proposed-method"),
+    "bvp-doppler-coherent": ("victor", _josiah_bvp("simclr-doppler-coherent"), "cross-subject-bvp", "proposed-method"),
     "autofi": ("josiah", _josiah_autofi(), "sensefi-bvp", "published-baseline"),
     "mae": ("josiah", _josiah_mae(), "cross-subject-bvp", "published-baseline"),
     "capc": ("josiah", _josiah_capc("home", "home"), "signfi-home", "published-baseline"),
@@ -175,7 +180,12 @@ METHODS: dict[str, tuple[str, Callable[..., float], str, str]] = {
     "composability-combined": ("victor", _victor("simclr-combined"), "cross-subject", "proposed-method"),
 }
 
-BVP_METHODS = {"bvp-supervised", "bvp-simclr-trivial", "bvp-simclr-handcrafted", "autofi", "mae"}
+BVP_METHODS = {
+    "bvp-supervised", "bvp-simclr-trivial", "bvp-simclr-handcrafted",
+    "bvp-doppler", "bvp-static-perturb", "bvp-velocity-jitter",
+    "bvp-coherent-mask", "bvp-doppler-coherent",
+    "autofi", "mae",
+}
 SIGNFI_METHODS = {"capc", "capc-lab-to-home"}
 UT_HAR_METHODS = {"autofi-uthar", "mae-uthar"}
 

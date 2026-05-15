@@ -323,12 +323,51 @@ def run_bvp_project_method(
         print(f"[josiah-bvp-supervised] top-1: {acc:.4f}")
         return acc
 
-    if mode in ("simclr-trivial", "simclr-handcrafted"):
-        augment_fn = (
-            random_temporal_crop_bvp
-            if mode == "simclr-trivial"
-            else bvp_gaussian_then_temporal_mask
-        )
+    proposed_modes = (
+        "simclr-doppler",            # Slice 1
+        "simclr-static-perturb",     # Slice 2
+        "simclr-velocity-jitter",    # Slice 3 (BVP-reframed)
+        "simclr-coherent-mask",      # Slice 4
+        "simclr-doppler-coherent",   # Slice 6
+    )
+    if mode in ("simclr-trivial", "simclr-handcrafted") or mode in proposed_modes:
+        if mode == "simclr-trivial":
+            augment_fn = random_temporal_crop_bvp
+        elif mode == "simclr-handcrafted":
+            augment_fn = bvp_gaussian_then_temporal_mask
+        elif mode == "simclr-doppler":
+            # Slice 1 (George): Doppler-aware time warping. Shape-agnostic
+            # on (T, X, Y); on BVP it scales gesture speed in velocity space.
+            from src.slices.george.augmentations import doppler_warp
+            augment_fn = doppler_warp
+        elif mode == "simclr-static-perturb":
+            # Slice 2 (Chigozie): time-mean velocity-profile swap across batch.
+            # static_dynamic_split's time-mean variant works on any (B, T, X, Y).
+            from src.slices.chigozie.augmentations import static_perturb
+            augment_fn = static_perturb
+        elif mode == "simclr-coherent-mask":
+            # Slice 4 (Ihunanya): contiguous block mask on axis -2.
+            # On BVP, axis -2 is vx -> "coherent velocity-band mask".
+            from src.slices.ihunanya.augmentations import coherent_block_mask
+
+            def augment_fn(x: torch.Tensor) -> torch.Tensor:
+                # BVP vx has only 20 cells; a 5-wide block matches the
+                # 25% mask ratio of the SimCLR-handcrafted baseline.
+                return coherent_block_mask(x, block_width=5)
+
+        elif mode == "simclr-doppler-coherent":
+            # Slice 6 (Victor): composition of Doppler-warp and coherent-mask.
+            from src.slices.victor.augmentations import doppler_then_coherent_mask
+
+            def augment_fn(x: torch.Tensor) -> torch.Tensor:
+                return doppler_then_coherent_mask(x, block_width=5)
+
+        elif mode == "simclr-velocity-jitter":
+            # Slice 3 (Collins, BVP-reframed): random affine in (vx, vy) plane.
+            from src.slices.collins.bvp_velocity_jitter import bvp_velocity_jitter
+            augment_fn = bvp_velocity_jitter
+        else:
+            raise ValueError(f"unhandled mode: {mode!r}")
         encoder = BVPEncoder(feature_dim=feature_dim)
         ssl_model = BVPSimCLR(encoder=encoder, projection_dim=64)
         history = pretrain_simclr_bvp(
