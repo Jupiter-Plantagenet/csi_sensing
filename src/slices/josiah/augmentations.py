@@ -1,14 +1,16 @@
 """Augmentation functions for Slice 5's SSL baselines.
 
-T5.3 uses `random_crop` only — the trivial-augmentation baseline that
-tests "does SSL help at all on CSI?" T5.6 will add `gaussian_noise` and
-`random_subcarrier_mask` for the hand-crafted-augmentation baseline (the
-comparison column for slices 1, 2, 4, 6).
+- `random_crop` (T5.3) — trivial-augmentation baseline. Tests "does SSL
+  help at all on CSI, even with the dumbest augmentation?"
+- `gaussian_noise` + `random_subcarrier_mask` + `gaussian_then_mask` (T5.6)
+  — hand-crafted-augmentation baseline. This is the comparison-column row
+  every physics-informed augmentation slice (1, 2, 4, 6) measures against.
+  Ported from Slice 1 per the slice-independence rule so the comparison
+  is apples-to-apples (same augmentation parameters).
 
 Each augmentation accepts a batch shaped `(B, T, S, A)` or a single sample
-`(T, S, A)` and returns the same shape (cropping is followed by zero-pad
-back to the original `T` so the encoder's batch dim stays consistent).
-Two independent calls produce two independent views; see `ssl.make_views`.
+`(T, S, A)` and returns the same shape. Two independent calls produce two
+independent views; see `ssl.make_views`.
 """
 
 from __future__ import annotations
@@ -48,3 +50,53 @@ def random_crop(x: torch.Tensor, crop_ratio: float = 0.7) -> torch.Tensor:
         out = torch.zeros_like(x)
         out[:t_crop, :, :] = cropped
     return out
+
+
+# ---------------------------------------------------------------------------
+# T5.6 hand-crafted-augmentation baseline
+# Gaussian noise + random subcarrier masking, ported from Slice 1. Same
+# parameters as Slice 1 so the comparison row sits on identical augmentations.
+
+
+def gaussian_noise(x: torch.Tensor, sigma: float = 0.05) -> torch.Tensor:
+    """Additive Gaussian noise on every CSI element.
+
+    `sigma` matches Slice 1's default. Pick it small relative to the typical
+    CSI magnitude after the projection / normalisation upstream.
+    """
+    return x + torch.randn_like(x) * sigma
+
+
+def random_subcarrier_mask(x: torch.Tensor, p: float = 0.15) -> torch.Tensor:
+    """Zero out a random fraction `p` of subcarriers per sample.
+
+    Operates on `(T, S, A)` or `(B, T, S, A)`. In the batched path each
+    sample gets its own independent mask so two calls produce two views
+    with different masked-out subcarriers — the SimCLR view-pair recipe.
+    """
+    if x.ndim == 3:
+        s = x.shape[1]
+        keep = torch.rand(s, device=x.device) >= p
+        return x * keep.view(1, s, 1).to(x.dtype)
+    if x.ndim == 4:
+        b, _, s, _ = x.shape
+        keep = torch.rand(b, s, device=x.device) >= p
+        return x * keep.view(b, 1, s, 1).to(x.dtype)
+    raise ValueError(
+        f"random_subcarrier_mask expects (T, S, A) or (B, T, S, A); "
+        f"got {tuple(x.shape)}"
+    )
+
+
+def gaussian_then_mask(
+    x: torch.Tensor, sigma: float = 0.05, p: float = 0.15
+) -> torch.Tensor:
+    """T5.6 default view augmentation: Gaussian noise then subcarrier mask.
+
+    Used symmetrically (both views call this) to produce the hand-crafted-
+    augmentation baseline. The composition order — noise first, mask
+    second — matches Slice 1's `gaussian_then_mask` so the comparison
+    rows are byte-identical augmentation pipelines, only the encoder
+    pre-training augmentation set differs across rows.
+    """
+    return random_subcarrier_mask(gaussian_noise(x, sigma=sigma), p=p)
