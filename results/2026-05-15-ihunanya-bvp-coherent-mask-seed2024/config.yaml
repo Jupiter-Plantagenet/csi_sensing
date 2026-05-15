@@ -3,11 +3,11 @@ bvp_root: data/widar3/Widardata
 counts_as_published_reproduction: false
 epochs: 300
 max_files: null
-method: bvp-doppler-coherent
+method: bvp-coherent-mask
 method_kind: proposed-method
-owner: victor
+owner: ihunanya
 representation: bvp
-seed: 42
+seed: 2024
 split: cross-subject-bvp
 test_dates: null
 time_steps: bvp-22x20x20

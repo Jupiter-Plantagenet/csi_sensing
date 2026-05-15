@@ -50,6 +50,38 @@ def _doppler_warp_one(x: torch.Tensor, factor: float) -> torch.Tensor:
     return torch.cat([x_r, pad], dim=0)
 
 
+def _doppler_warp_batched(
+    x: torch.Tensor, factors: torch.Tensor
+) -> torch.Tensor:
+    """Vectorized Doppler-warp over a batch using ``F.grid_sample``.
+
+    Equivalent to applying ``_doppler_warp_one`` per sample with
+    ``factor=factors[i]``, but without the Python per-sample loop. Reads
+    each output time index ``k`` from source index ``k / factors[i]``;
+    positions beyond ``T-1`` are zero (matches the pad-after-crop
+    behaviour of the loop variant).
+    """
+    b, t, s, a = x.shape
+    sa = s * a
+    src = torch.arange(t, device=x.device, dtype=x.dtype)
+    src_idx = src.unsqueeze(0) / factors.unsqueeze(1)  # (B, T)
+    valid = (src_idx <= (t - 1)).to(x.dtype)  # (B, T)
+    src_clamped = src_idx.clamp(min=0.0, max=float(t - 1))
+    grid_y = 2.0 * src_clamped / max(1, t - 1) - 1.0  # (B, T)
+    grid_y = grid_y.unsqueeze(2).expand(b, t, sa)
+    if sa > 1:
+        col = torch.arange(sa, device=x.device, dtype=x.dtype)
+        grid_x = 2.0 * col / (sa - 1) - 1.0
+    else:
+        grid_x = torch.zeros(sa, device=x.device, dtype=x.dtype)
+    grid_x = grid_x.view(1, 1, sa).expand(b, t, sa)
+    grid = torch.stack([grid_x, grid_y], dim=-1)  # (B, T, SA, 2)
+    img = x.permute(0, 1, 2, 3).reshape(b, t, s, a).reshape(b, t, sa).unsqueeze(1)
+    out = F.grid_sample(img, grid, mode="bilinear", padding_mode="zeros", align_corners=True)
+    out = out.squeeze(1).reshape(b, t, s, a)
+    return out * valid.view(b, t, 1, 1)
+
+
 def doppler_warp(
     x: torch.Tensor,
     factor: float | None = None,
@@ -58,18 +90,21 @@ def doppler_warp(
     """Doppler-aware time warp.
 
     Accepts `(T, S, A)` or `(B, T, S, A)`. If `factor` is None, each
-    sample gets an independent factor from `factor_range`.
+    sample gets an independent factor from `factor_range`. The batched
+    path is fully vectorized via ``F.grid_sample`` (no Python per-sample
+    loop) so the augmentation stays on-device on GPU.
     """
     low, high = factor_range
     if x.ndim == 3:
         f = _sample_factor(low, high) if factor is None else factor
         return _doppler_warp_one(x, f)
     if x.ndim == 4:
-        out = torch.empty_like(x)
-        for i in range(x.shape[0]):
-            f = _sample_factor(low, high) if factor is None else factor
-            out[i] = _doppler_warp_one(x[i], f)
-        return out
+        b = x.shape[0]
+        if factor is None:
+            factors = torch.empty(b, device=x.device, dtype=x.dtype).uniform_(low, high)
+        else:
+            factors = torch.full((b,), float(factor), device=x.device, dtype=x.dtype)
+        return _doppler_warp_batched(x, factors)
     raise ValueError(
         f"doppler_warp expects (T, S, A) or (B, T, S, A); got {tuple(x.shape)}"
     )
@@ -102,13 +137,15 @@ def coherent_block_mask(
         out[:, start : start + block_width, :] = 0
         return out
 
+    # Vectorized: build a per-sample (b, s) boolean mask.
     b = x.shape[0]
     starts = torch.randint(0, max_start + 1, (b,), device=x.device)
-    out = x.clone()
-    for i in range(b):
-        s_i = int(starts[i].item())
-        out[i, :, s_i : s_i + block_width, :] = 0
-    return out
+    s_idx = torch.arange(s, device=x.device)
+    in_block = (s_idx.unsqueeze(0) >= starts.unsqueeze(1)) & (
+        s_idx.unsqueeze(0) < (starts + block_width).unsqueeze(1)
+    )  # (b, s)
+    keep = (~in_block).to(x.dtype)
+    return x * keep.view(b, 1, s, 1)
 
 
 # ---------------------------------------------------------------------------

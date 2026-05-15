@@ -7,7 +7,7 @@ method: bvp-doppler-coherent
 method_kind: proposed-method
 owner: victor
 representation: bvp
-seed: 42
+seed: 2024
 split: cross-subject-bvp
 test_dates: null
 time_steps: bvp-22x20x20

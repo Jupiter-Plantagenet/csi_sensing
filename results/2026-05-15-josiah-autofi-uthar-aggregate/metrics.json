@@ -1,0 +1,12 @@
+{
+  "mean": 0.516,
+  "metric": "accuracy",
+  "n": 1,
+  "sources": [
+    "results-gpu\\2026-05-15-josiah-autofi-uthar-seed42\\metrics.json"
+  ],
+  "std": 0.0,
+  "values": [
+    0.516
+  ]
+}

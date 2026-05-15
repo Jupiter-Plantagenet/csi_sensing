@@ -1,7 +1,7 @@
 batch_size: 64
 bvp_root: data/widar3/Widardata
 counts_as_published_reproduction: false
-epochs: 2
+epochs: 300
 max_files: null
 method: bvp-coherent-mask
 method_kind: proposed-method

@@ -41,11 +41,11 @@ Three published methods were targeted as exact-reproduction baselines:
 | Reproduction | Our number | Paper number | Status |
 |---|---:|---:|---|
 | AutoFi (Widar BVP, SenseFi protocol, T=22 + linear probe) | 0.399 | 0.638 (paper §IV-D, T=40 + few-shot) | **hardware-limited** — preprocessing mismatch (we have SenseFi's T=22 BVP CSV release; the paper used the original Widar3 T=40 BVP release plus few-shot calibration, not linear probe). |
+| AutoFi UT-HAR §IV-C 20-shot (1 seed, 100 ep SSL + 300 ep probe) | 0.516 | 0.788 (paper §IV-C Fig. 4) | **failed** — −27.2 pp gap. Implementation paper-faithful (GSS loss, two-stream Conv1d encoder, AdamW); the gap likely reflects encoder-architecture choice (paper §IV-C encoder details "unspecified"; we used a SenseFi-style 1D CNN adapted for UT-HAR shape). |
 | CAPC paper-exact (Lab→Home, true LARS, 300 ep SSL, k=9 clamped from paper k=12) | 1.000 | 0.9755 (paper Table 1, k=10 and k=12 cells) | **above-saturation** — raw-CSI logistic-regression floor at the same k=9 split is 0.9638; paper's 0.9755 sits within ~1.2 pp of that floor. The "exact within 0.1 pp" tolerance is not meaningful for this saturated cell. |
 | CAPC interim (Home-only, AdamW stand-in, 2 ep SSL, k=9) | 0.978 | n/a | sanity check |
 | MAE adapted to BVP cross-subject (3 seeds, 200 ep) | 0.629 ± 0.010 | n/a | **adapted-baseline** — SSLCSI's MAE = 0.692 is on raw CSI receiver-2 with random split, not directly comparable. |
-| AutoFi UT-HAR §IV-C 20-shot | smoke 0.36 (full run queued) | 0.788 | pending |
-| MAE UT-HAR | smoke 0.61 (full run queued) | 0.843 | pending |
+| **MAE-on-UT-HAR (SSLCSI Table 4c, 3 seeds, 200 ep, batch=256)** | **0.8427 ± 0.0031** | **0.843** | **EXACT** — gap = −0.03 pp, well within the 0.1 pp tolerance the roadmap requires. The first and only cleanly-exact published-baseline reproduction in this session. Implements ViT-style transformer MAE (250 time tokens × 90-dim, 6-layer encoder, 2-layer decoder, mask_ratio=0.75, AdamW lr=1.5e-4 with 40-ep warmup + cosine decay) on the SenseFi-format UT-HAR data. |
 
 All baseline code is paper-faithful and unit-tested. Where the gap is
 preprocessing- or saturation-driven rather than implementation-driven we
@@ -133,43 +133,72 @@ while preserving the physics-grounded design principle:
 
 | Slice | Method | Result (3 seeds) | vs handcrafted (0.482) | Reading |
 |---|---|---:|---:|---|
-| 1 | bvp-doppler | **0.205 ± 0.005** | −27.7 pp | hypothesis NOT supported — Doppler-warp alone collapses SSL on BVP |
-| 2 | bvp-static-perturb | **0.297** | −18.5 pp | hypothesis NOT supported — static-swap on BVP hurts SimCLR |
-| 3 | bvp-velocity-jitter | running (smoke 0.49) | pending | promising |
-| 4 | bvp-coherent-mask | running (smoke 0.47) | pending | promising |
-| 6 | bvp-doppler-coherent | running (smoke 0.37) | pending | likely below baseline |
+| 1 | bvp-doppler | **0.205 ± 0.005** | **−27.7 pp** | HURTS — Doppler-warp alone collapses SSL on BVP |
+| 2 | bvp-static-perturb | **0.297 ± 0.012** | **−18.5 pp** | HURTS — static-swap on BVP hurts SimCLR |
+| 3 | bvp-velocity-jitter (BVP-reframed) | **0.378 ± 0.007** | **−10.5 pp** | HURTS — velocity-frame jitter hurts |
+| 4 | bvp-coherent-mask | **0.414 ± 0.008** | **−6.8 pp** | HURTS — closest to baseline, but still below |
+| 6 | bvp-doppler-coherent (composability) | **0.362 ± 0.015** | **−12.0 pp** | HURTS — composition is *worse* than either standalone |
 
-Slices 1 and 2 are **defensible negative results** — tight standard
-deviation (0.005 for Slice 1), substantial gap from baseline, replicated
-across 3 seeds. Doppler-warp and static-swap as *standalone* SimCLR
-augmentations on BVP make the contrastive task too easy (two views
-remain too similar), leading to representation collapse. This
-contradicts the simple version of the slide-17 thesis ("physics-grounded
-> content-agnostic") for these two specific augmentations on this
-specific substrate.
+**All five proposed methods underperform the handcrafted baseline on
+BVP cross-subject.** Standard deviations are tight (0.005–0.015) across
+3 seeds; these are not noise. Most striking: the composability slice
+(6) lands *below* both of its constituent augmentations (4 alone is
+−6.8 pp, 1 alone is −27.7 pp; the composition is −12.0 pp) — the
+augmentations actively interfere with each other rather than composing
+additively.
+
+This contradicts the simple version of the slide-17 thesis
+("physics-grounded > content-agnostic") for these five specific
+augmentations on this specific substrate. The simplest defensible
+explanation: SimCLR with a single contrastive augmentation produces
+two views that share too much structure (e.g., two time-warped views
+of the same gesture remain mutually highly similar), making the
+contrastive task too easy and the encoder representation degenerate.
+The handcrafted Gaussian + temporal mask baseline introduces *more*
+inter-view variation, which paradoxically makes the contrastive task
+harder and the resulting features more useful for the downstream
+linear probe.
 
 ## 8. What the paper claims (revised, contribution-rich)
 
-Rather than "physics-grounded augmentations universally help SSL on CSI"
-— which our own data refutes for two of five slices — the honest paper
-claims:
+The original slide-17 thesis ("physics-grounded augmentations help SSL
+on CSI") is *refuted* by our own data: all five physics-grounded
+augmentations we tested underperform the content-agnostic handcrafted
+baseline on BVP cross-subject. The honest paper makes three claims
+instead:
 
-1. **Physics-grounded augmentation is a *design space*, not a free
-   improvement.** Some physics-grounded augmentations (the ones still
-   running — velocity-jitter, coherence-mask) appear to match or beat
-   the handcrafted baseline; others (Doppler-warp, static-perturb) hurt.
-   The mechanism for *when* each works is the contribution.
-2. **The substrate matters more than the augmentation.** Cross-subject
-   Widar3 raw CSI is broken for every SSL method tested; BVP cross-
-   subject is a working substrate with 0.41 pp of headroom over chance.
-   The team paper's Gate-1 diagnostic is itself a methodological
-   contribution.
-3. **Reproductions of AutoFi and CAPC honestly classified.** AutoFi
-   hardware-limited by SenseFi-vs-paper-protocol mismatch; CAPC
-   paper-exact but on a saturated cell where ±0.1 pp tolerance is
-   below the task's own noise floor. These honest classifications are
-   themselves a contribution (most prior reproduction attempts elide
-   protocol drift).
+1. **Physics-grounded augmentation as a design space, *not* a universal
+   improvement.** Naive physics-grounded augmentations (Doppler-warp,
+   static-perturb, velocity-frame jitter, coherent velocity-band mask,
+   and their composition) all hurt SimCLR on BVP. The simplest
+   defensible mechanism: each of these augmentations preserves too much
+   inter-view similarity, making the contrastive task too easy and
+   inducing representation collapse. The handcrafted Gaussian + temporal
+   mask baseline succeeds *because* it injects more inter-view variation
+   than a pure physical transformation does. This is a real and
+   *publishable* counter-finding to the slide-17 framing.
+
+2. **Substrate matters more than augmentation.** Raw-CSI cross-subject
+   Widar3 sits at chance for every SSL method tested (four method
+   families, eight pipelines, all within ±0.04 of 1/6); BVP cross-subject
+   leaves 0.41 pp of headroom for SSL to operate. The team paper's
+   Gate-1 substrate diagnostic is itself a methodological contribution.
+
+3. **One exact published-baseline reproduction**: MAE on UT-HAR =
+   0.8427 ± 0.0031 vs SSLCSI Table 4c = 0.843 (−0.03 pp gap, well within
+   the 0.1 pp tolerance). The other reproduction attempts are honestly
+   classified: AutoFi-on-BVP and AutoFi-on-UT-HAR fail or are
+   hardware-limited by protocol mismatches; CAPC paper-exact sits above
+   a saturated cell where the 0.1 pp tolerance is below the task's
+   intrinsic noise floor.
+
+The honest paper is therefore *contribution-rich* in a different way
+than originally framed: it refutes the simplest version of the
+"physics-grounded > content-agnostic" thesis with tight, replicated
+negative results, while *succeeding* at one exact reproduction of a
+non-saturated published cell (MAE-UT-HAR). Negative results plus one
+clean positive reproduction is more honest than five
+unfalsifiable-because-saturated wins would have been.
 
 ## 9. Where the artifacts live
 

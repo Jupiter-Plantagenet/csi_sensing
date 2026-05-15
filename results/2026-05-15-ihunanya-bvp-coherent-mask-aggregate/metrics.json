@@ -1,12 +1,16 @@
 {
-  "mean": 0.46543681085665817,
+  "mean": 0.41353312600131936,
   "metric": "accuracy",
-  "n": 1,
+  "n": 3,
   "sources": [
-    "results\\2026-05-15-ihunanya-bvp-coherent-mask-seed42\\metrics.json"
+    "results-gpu\\2026-05-15-ihunanya-bvp-coherent-mask-seed42\\metrics.json",
+    "results-gpu\\2026-05-15-ihunanya-bvp-coherent-mask-seed1337\\metrics.json",
+    "results-gpu\\2026-05-15-ihunanya-bvp-coherent-mask-seed2024\\metrics.json"
   ],
-  "std": 0.0,
+  "std": 0.008370695515220834,
   "values": [
-    0.46543681085665817
+    0.4230986711902742,
+    0.4099519366694939,
+    0.40754877014419
   ]
 }

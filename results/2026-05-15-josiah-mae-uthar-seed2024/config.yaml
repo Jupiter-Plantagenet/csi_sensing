@@ -1,0 +1,13 @@
+batch_size: 256
+bvp_root: null
+counts_as_published_reproduction: false
+epochs: 200
+max_files: null
+method: mae-uthar
+method_kind: published-baseline
+owner: josiah
+representation: ut-har-csi-amplitude
+seed: 2024
+split: ut-har
+test_dates: null
+time_steps: ut-har-1x250x90

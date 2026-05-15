@@ -1,0 +1,12 @@
+{
+  "dataset": "ut-har",
+  "input_shape": [
+    1,
+    250,
+    90
+  ],
+  "num_classes": 7,
+  "test_n": 500,
+  "train_n": 3977,
+  "val_n": 496
+}

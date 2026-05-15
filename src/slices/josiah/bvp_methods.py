@@ -152,16 +152,25 @@ def pretrain_simclr_bvp(
     device: str = "cpu",
     log_every: int = 20,
 ) -> list[float]:
+    """GPU-friendly SimCLR pre-training loop.
+
+    Key optimisations over a naive loop on the small BVP CNN:
+
+    * Loss accumulated as a GPU tensor; ``.item()`` only at epoch
+      boundary so the per-batch CPU<->GPU sync goes away.
+    * Augmentations are batched (no Python per-sample loops in
+      ``doppler_warp`` / ``coherent_block_mask`` / ``static_perturb``).
+    """
     model = model.to(device)
     model.train()
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     history: list[float] = []
     for epoch in range(epochs):
-        total = 0.0
+        total = torch.zeros((), device=device)
         n = 0
         for batch in loader:
             x = batch[0] if isinstance(batch, (list, tuple)) else batch
-            x = x.to(device).float()
+            x = x.to(device, non_blocking=True).float()
             v1 = augment_fn(x)
             v2 = augment_fn(x)
             z1 = model(v1)
@@ -170,11 +179,12 @@ def pretrain_simclr_bvp(
             opt.zero_grad()
             loss.backward()
             opt.step()
-            total += float(loss.item())
+            total = total + loss.detach()
             n += 1
-        history.append(total / max(1, n))
+        avg = float(total.item()) / max(1, n)
+        history.append(avg)
         if log_every and (epoch + 1) % log_every == 0:
-            print(f"[bvp-simclr] epoch {epoch+1}/{epochs} nt-xent={history[-1]:.4f}")
+            print(f"[bvp-simclr] epoch {epoch+1}/{epochs} nt-xent={avg:.4f}")
     return history
 
 
@@ -310,10 +320,25 @@ def run_bvp_project_method(
         f"gestures={gestures_list}, classes={num_classes}"
     )
 
+    use_cuda = torch.cuda.is_available()
+    nworkers = 4 if use_cuda else 0
     train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True, drop_last=(mode != "supervised")
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=(mode != "supervised"),
+        num_workers=nworkers,
+        persistent_workers=(nworkers > 0),
+        pin_memory=use_cuda,
     )
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=nworkers,
+        persistent_workers=(nworkers > 0),
+        pin_memory=use_cuda,
+    )
 
     if mode == "supervised":
         model = BVPSupervisedClassifier(num_classes=num_classes, feature_dim=feature_dim)

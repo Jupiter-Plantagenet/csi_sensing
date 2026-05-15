@@ -104,13 +104,85 @@ def default_rows(results_root: Path) -> list[BaselineRow]:
             note="MAE adapted to BVP cross-subject. Each of 22 time steps is a token; mask_ratio=0.75; 4-layer encoder, 2-layer decoder. 200 SSL epochs, linear probe.",
         ),
         BaselineRow(
-            method="capc",
-            label="CAPC\n(hardware-limited)",
+            method="capc-lab-to-home",
+            label="CAPC\n(Lab→Home, LARS)",
             kind="published-baseline",
             published_value=0.9755,
             published_citation="Barahimi et al. 2024 Table 1 (SignFi-Home, 12 shots/class, linear eval).",
+            aggregate_dir=_aggregate(results_root, "josiah", "capc-lab-to-home"),
+            note="Paper-exact protocol (LARS, 300 ep SSL, k=9 clamped from paper k=12; Home has 10/class). Above-saturation classification: raw-CSI baseline at same k=9 = 0.9638, leaving <2pp headroom for any SSL method.",
+        ),
+        BaselineRow(
+            method="autofi-uthar",
+            label="AutoFi\n(UT-HAR §IV-C)",
+            kind="published-baseline",
+            published_value=0.788,
+            published_citation="Yang et al. 2022 §IV-C Fig. 4 (UT-HAR 20-shot).",
+            aggregate_dir=_aggregate(results_root, "josiah", "autofi-uthar"),
+            note="Paper §IV-C protocol: SSL pre-train on UT-HAR train (3977 samples), 20-shot calibration (140 train samples), eval on 500-sample test.",
+        ),
+        BaselineRow(
+            method="mae-uthar",
+            label="MAE\n(UT-HAR SSLCSI)",
+            kind="published-baseline",
+            published_value=0.843,
+            published_citation="Xu et al. SSLCSI Table 4c (UT-HAR MAE-ViT linear probe).",
+            aggregate_dir=_aggregate(results_root, "josiah", "mae-uthar"),
+            note="MAE: 250 time tokens × 90 features, ViT-style 6-layer encoder + 2-layer decoder, mask_ratio=0.75, AdamW lr=1.5e-4 with 40-epoch warmup + cosine decay, 200 epochs, batch=256 (MMSelfSup default).",
+        ),
+        BaselineRow(
+            method="bvp-doppler",
+            label="Slice 1 — Doppler-warp\n(George)",
+            kind="proposed-method",
+            published_value=None,
+            published_citation=None,
+            aggregate_dir=_aggregate(results_root, "george", "bvp-doppler"),
+            note="3-seed; physics-grounded hypothesis: speed-invariance via time-axis stretch on BVP velocity profile.",
+        ),
+        BaselineRow(
+            method="bvp-static-perturb",
+            label="Slice 2 — static-perturb\n(Chigozie)",
+            kind="proposed-method",
+            published_value=None,
+            published_citation=None,
+            aggregate_dir=_aggregate(results_root, "chigozie", "bvp-static-perturb"),
+            note="3-seed; physics-grounded hypothesis: baseline-velocity invariance via time-mean swap across batch.",
+        ),
+        BaselineRow(
+            method="bvp-velocity-jitter",
+            label="Slice 3 — velocity-jitter\n(Collins, reframed)",
+            kind="proposed-method",
+            published_value=None,
+            published_citation=None,
+            aggregate_dir=_aggregate(results_root, "collins", "bvp-velocity-jitter"),
+            note="3-seed; BVP-reframed hypothesis (original: chipset-invariance via phase noise). On BVP: coordinate-frame invariance via small random affine in (vx, vy).",
+        ),
+        BaselineRow(
+            method="bvp-coherent-mask",
+            label="Slice 4 — coherent-mask\n(Ihunanya)",
+            kind="proposed-method",
+            published_value=None,
+            published_citation=None,
+            aggregate_dir=_aggregate(results_root, "ihunanya", "bvp-coherent-mask"),
+            note="3-seed; physics-grounded hypothesis: velocity-band-occlusion invariance via contiguous vx mask.",
+        ),
+        BaselineRow(
+            method="bvp-doppler-coherent",
+            label="Slice 6 — composability\n(Victor)",
+            kind="proposed-method",
+            published_value=None,
+            published_citation=None,
+            aggregate_dir=_aggregate(results_root, "victor", "bvp-doppler-coherent"),
+            note="3-seed; composability hypothesis: Doppler-warp + coherent-mask sequential.",
+        ),
+        BaselineRow(
+            method="capc",
+            label="CAPC\n(Home-only interim)",
+            kind="published-baseline",
+            published_value=0.9755,
+            published_citation="Barahimi et al. 2024 Table 1.",
             aggregate_dir=_aggregate(results_root, "josiah", "capc"),
-            note="HARDWARE-LIMITED. SignFi UL/DL CSI not present in data/. See papers/team/capc-hardware-limited.md.",
+            note="Home-only interim protocol (AdamW stand-in for LARS, 2 ep SSL). Single seed sanity check; not paper-protocol. See capc-lab-to-home for paper-exact.",
         ),
     ]
 
@@ -122,6 +194,8 @@ def _classify(row: BaselineRow, agg: dict | None) -> str:
         return "hardware-limited"
     if agg is None:
         return "pending"
+    if row.kind == "proposed-method":
+        return "proposed-method"
     if row.kind == "adapted-baseline":
         return "adapted-baseline"
     if row.published_value is None:

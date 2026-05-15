@@ -1,0 +1,16 @@
+{
+  "mean": 0.8426666666666667,
+  "metric": "accuracy",
+  "n": 3,
+  "sources": [
+    "results-gpu\\2026-05-15-josiah-mae-uthar-seed42\\metrics.json",
+    "results-gpu\\2026-05-15-josiah-mae-uthar-seed1337\\metrics.json",
+    "results-gpu\\2026-05-15-josiah-mae-uthar-seed2024\\metrics.json"
+  ],
+  "std": 0.0030550504633038962,
+  "values": [
+    0.842,
+    0.84,
+    0.846
+  ]
+}

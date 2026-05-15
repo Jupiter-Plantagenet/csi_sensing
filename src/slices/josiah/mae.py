@@ -550,6 +550,9 @@ def pretrain_mae_uthar(
     device: str = "cpu",
     log_every: int = 10,
 ) -> list[float]:
+    """GPU-friendly MAE pre-training. Loss accumulated as GPU tensor; ``.item()``
+    only at epoch boundary so the per-batch CPU<->GPU sync disappears.
+    """
     model = model.to(device)
     optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     history: list[float] = []
@@ -558,21 +561,22 @@ def pretrain_mae_uthar(
         for g in optim.param_groups:
             g["lr"] = lr * mult
         model.train()
-        total = 0.0
+        total = torch.zeros((), device=device)
         n = 0
         for batch in loader:
             x = batch[0] if isinstance(batch, (list, tuple)) else batch
-            x = x.to(device).float()
+            x = x.to(device, non_blocking=True).float()
             out = model(x)
             loss = out["loss"]
             optim.zero_grad()
             loss.backward()
             optim.step()
-            total += float(loss.item())
+            total = total + loss.detach()
             n += 1
-        history.append(total / max(1, n))
+        avg = float(total.item()) / max(1, n)
+        history.append(avg)
         if log_every and (epoch + 1) % log_every == 0:
-            print(f"[mae-uthar-ssl] epoch {epoch+1}/{epochs} mse={history[-1]:.4f} lr={lr*mult:.2e}")
+            print(f"[mae-uthar-ssl] epoch {epoch+1}/{epochs} mse={avg:.4f} lr={lr*mult:.2e}")
     return history
 
 
@@ -642,9 +646,20 @@ def run_mae_uthar(
     )
     print(f"[mae-uthar] train_n={len(train_ds)} test_n={len(test_ds)} mask_ratio={mask_ratio}")
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
-    probe_train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+    use_cuda = torch.cuda.is_available()
+    nworkers = 4 if use_cuda else 0
+    train_loader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, drop_last=True,
+        num_workers=nworkers, persistent_workers=(nworkers > 0), pin_memory=use_cuda,
+    )
+    probe_train_loader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=False,
+        num_workers=nworkers, persistent_workers=(nworkers > 0), pin_memory=use_cuda,
+    )
+    test_loader = DataLoader(
+        test_ds, batch_size=batch_size, shuffle=False,
+        num_workers=nworkers, persistent_workers=(nworkers > 0), pin_memory=use_cuda,
+    )
 
     model = UTHARMAE(
         num_features=90,

@@ -48,13 +48,17 @@ def coherent_block_mask(
         out[:, start : start + block_width, :] = 0
         return out
 
+    # Vectorized batched path: build a per-sample (b, s) boolean mask via
+    # broadcasting and apply once, no Python per-sample loop.
     b = x.shape[0]
+    s = x.shape[-2]
     starts = torch.randint(0, max_start + 1, (b,), device=x.device)
-    out = x.clone()
-    for i in range(b):
-        s_i = int(starts[i].item())
-        out[i, :, s_i : s_i + block_width, :] = 0
-    return out
+    s_idx = torch.arange(s, device=x.device)  # (s,)
+    in_block = (s_idx.unsqueeze(0) >= starts.unsqueeze(1)) & (
+        s_idx.unsqueeze(0) < (starts + block_width).unsqueeze(1)
+    )  # (b, s)
+    keep = (~in_block).to(x.dtype)  # (b, s); 1 outside mask, 0 inside
+    return x * keep.view(b, 1, s, 1)
 
 
 # ---------------------------------------------------------------------------

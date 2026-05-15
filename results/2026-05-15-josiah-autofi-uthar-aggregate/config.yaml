@@ -1,0 +1,14 @@
+batch_size: 64
+bvp_root: null
+counts_as_published_reproduction: true
+epochs: 100
+max_files: null
+method: autofi-uthar
+method_kind: published-baseline
+owner: josiah
+representation: ut-har-csi-amplitude
+seeds:
+  - 42
+split: ut-har
+test_dates: null
+time_steps: ut-har-1x250x90
