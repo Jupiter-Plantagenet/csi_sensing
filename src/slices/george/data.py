@@ -149,6 +149,10 @@ def load_widar3_dat(
     parser = csiread.Intel(str(path), nrxnum=nrxnum, ntxnum=ntxnum)
     parser.read()
     csi = torch.from_numpy(parser.get_scaled_csi())  # (T, S, Nrx, Ntx) complex
+    if csi.numel() == 0 or csi.shape[0] == 0:
+        # Empty .dat — happens on a small number of files in the public release
+        # (zero parsed packets). Caller filters these via a ValueError catch.
+        raise ValueError(f"empty CSI in {path}")
     if csi.ndim == 4:
         csi = csi.reshape(csi.shape[0], csi.shape[1], -1)
     real = csi_complex_to_real(csi)
@@ -236,9 +240,19 @@ class Widar3CrossSubject(Dataset):
 
         xs: list[torch.Tensor] = []
         ys: list[int] = []
+        skipped = 0
         for path, meta in items:
-            xs.append(load_widar3_dat(path, time_steps=self.time_steps))
-            ys.append(meta["gesture"] - 1)  # to 0-indexed
+            try:
+                xs.append(load_widar3_dat(path, time_steps=self.time_steps))
+                ys.append(meta["gesture"] - 1)  # to 0-indexed
+            except ValueError:
+                skipped += 1
+        if skipped:
+            print(f"[Widar3CrossSubject] skipped {skipped} empty .dat files")
+        if not xs:
+            raise RuntimeError(
+                f"every .dat under {self.root!r} was empty; check the data"
+            )
 
         self._x = torch.stack(xs, dim=0)
         self._y = torch.tensor(ys, dtype=torch.long)
