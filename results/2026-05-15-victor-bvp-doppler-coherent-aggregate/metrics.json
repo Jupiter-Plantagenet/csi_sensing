@@ -1,0 +1,12 @@
+{
+  "mean": 0.3720667232117614,
+  "metric": "accuracy",
+  "n": 1,
+  "sources": [
+    "results\\2026-05-15-victor-bvp-doppler-coherent-seed42\\metrics.json"
+  ],
+  "std": 0.0,
+  "values": [
+    0.3720667232117614
+  ]
+}

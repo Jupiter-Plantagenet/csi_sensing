@@ -1,0 +1,16 @@
+{
+  "mean": 0.2049288474224861,
+  "metric": "accuracy",
+  "n": 3,
+  "sources": [
+    "results\\2026-05-15-george-bvp-doppler-seed42\\metrics.json",
+    "results\\2026-05-15-george-bvp-doppler-seed1337\\metrics.json",
+    "results\\2026-05-15-george-bvp-doppler-seed2024\\metrics.json"
+  ],
+  "std": 0.004786195179991694,
+  "values": [
+    0.20412779191405145,
+    0.20059372349448684,
+    0.21006502685891998
+  ]
+}

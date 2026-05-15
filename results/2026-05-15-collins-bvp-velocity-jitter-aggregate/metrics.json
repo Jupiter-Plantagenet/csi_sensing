@@ -1,0 +1,16 @@
+{
+  "mean": 0.37809819998115163,
+  "metric": "accuracy",
+  "n": 3,
+  "sources": [
+    "results\\2026-05-15-collins-bvp-velocity-jitter-seed42\\metrics.json",
+    "results\\2026-05-15-collins-bvp-velocity-jitter-seed1337\\metrics.json",
+    "results\\2026-05-15-collins-bvp-velocity-jitter-seed2024\\metrics.json"
+  ],
+  "std": 0.006657694666853363,
+  "values": [
+    0.3739751201583263,
+    0.385778908679672,
+    0.3745405711054566
+  ]
+}

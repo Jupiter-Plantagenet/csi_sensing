@@ -1,0 +1,16 @@
+{
+  "mean": 0.2970031099802092,
+  "metric": "accuracy",
+  "n": 3,
+  "sources": [
+    "results\\2026-05-15-chigozie-bvp-static-perturb-seed42\\metrics.json",
+    "results\\2026-05-15-chigozie-bvp-static-perturb-seed1337\\metrics.json",
+    "results\\2026-05-15-chigozie-bvp-static-perturb-seed2024\\metrics.json"
+  ],
+  "std": 0.011599499533169888,
+  "values": [
+    0.2862595419847328,
+    0.309301668080294,
+    0.29544811987560077
+  ]
+}

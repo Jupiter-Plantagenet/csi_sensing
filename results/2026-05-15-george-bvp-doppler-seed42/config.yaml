@@ -1,0 +1,13 @@
+batch_size: 64
+bvp_root: data/widar3/Widardata
+counts_as_published_reproduction: false
+epochs: 300
+max_files: null
+method: bvp-doppler
+method_kind: proposed-method
+owner: george
+representation: bvp
+seed: 42
+split: cross-subject-bvp
+test_dates: null
+time_steps: bvp-22x20x20

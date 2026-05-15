@@ -1,0 +1,12 @@
+{
+  "mean": 0.46543681085665817,
+  "metric": "accuracy",
+  "n": 1,
+  "sources": [
+    "results\\2026-05-15-ihunanya-bvp-coherent-mask-seed42\\metrics.json"
+  ],
+  "std": 0.0,
+  "values": [
+    0.46543681085665817
+  ]
+}
