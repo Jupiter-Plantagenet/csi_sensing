@@ -1,0 +1,8 @@
+{
+  "pretrain_losses": [2.8794, 2.5817, 2.4907, 2.4496, 2.4232, 2.4097, 2.4016, 2.3847, 2.374, 2.3694],
+  "linear_probe_accuracy_within_subject": 0.200,
+  "chance_accuracy": 0.1667,
+  "n_samples": 4500,
+  "wall_clock_seconds": 54.3,
+  "comment": "Within-subject smoke on user6 only. Not the team-paper number; that requires cross-subject and multi-seed."
+}

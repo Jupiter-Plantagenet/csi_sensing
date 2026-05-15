@@ -1,0 +1,29 @@
+slice: josiah
+tracer_bullet: T5.6
+kind: smoke
+seed: 42
+epochs: 10
+batch_size: 32
+augmentation: gaussian_then_mask
+augmentation_params:
+  sigma: 0.05
+  p: 0.15
+encoder:
+  type: TinyCNN
+  in_channels: 90
+  feature_dim: 128
+ssl:
+  type: SimCLR
+  projection_dim: 64
+  temperature: 0.5
+data:
+  source: data/widar3/raw/20181128
+  users_extracted: [6]
+  split: within-subject 80/20 random
+  num_classes: 6
+  time_steps: 100
+note: |
+  Only one user (user6) is extracted from CSI_20181128.zip, so we cannot
+  run the proper cross-subject split here. This smoke validates that the
+  loader + csiread parsing + SimCLR training loop + linear probe all run
+  end-to-end on real Widar3.0 CSI.
