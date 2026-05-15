@@ -1,0 +1,30 @@
+slice: josiah
+tracer_bullet: T5.4
+kind: real-cross-subject
+method: AutoFi-GSS
+seed: 42
+epochs: 300
+batch_size: 64
+encoder:
+  type: AutoFiCNN
+  in_channels: 3
+  s: 30
+  t: 100
+  feature_dim: 128
+ssl:
+  type: AutoFi-GSS
+  num_bins: 6
+  augmentation_sigma: 0.05
+  loss_lambda: 1.0
+  loss_gamma: 1000.0
+optim:
+  type: SGD
+  lr: 0.01
+  momentum: 0.9
+data:
+  source: data/widar3/raw
+  loader: Widar3CrossSubject
+  test_subjects: [1, 2, 3, 4]
+  receivers: [1]
+  time_steps: 100
+  num_classes: 6

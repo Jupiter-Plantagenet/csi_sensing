@@ -1,0 +1,29 @@
+slice: josiah
+tracer_bullet: T5.5
+kind: real-cross-subject
+method: CAPC
+seed: 42
+epochs: 300
+batch_size: 64
+encoder:
+  type: RSCNetBlock (approximation)
+  embedding_dim: 128
+ssl:
+  type: CAPC-twin-branch
+  n_f: 10
+  future_steps: 9
+  beta: 50.0
+  bt_lambda: 0.002
+  augmentation: noise_then_submask
+optim:
+  type: LARS
+  lr_weights: 0.2
+  lr_bias_bn: 0.0048
+  weight_decay: 1.5e-6
+data:
+  source: data/widar3/raw
+  loader: Widar3CrossSubject
+  test_subjects: [1, 2, 3, 4]
+  receivers: [1]
+  time_steps: 100
+  num_classes: 6

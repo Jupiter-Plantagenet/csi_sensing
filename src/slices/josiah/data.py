@@ -27,7 +27,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import Dataset
 
-CSI_T = 100
+CSI_T = 200
 CSI_S = 30
 CSI_A = 3
 NUM_CLASSES = 6
