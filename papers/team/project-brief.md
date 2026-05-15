@@ -200,7 +200,133 @@ non-saturated published cell (MAE-UT-HAR). Negative results plus one
 clean positive reproduction is more honest than five
 unfalsifiable-because-saturated wins would have been.
 
-## 9. Where the artifacts live
+## 9. What the team should consider next
+
+Four directions, ordered by *expected paper-value per unit of effort*.
+
+### A. Investigate *why* the physics-grounded augmentations failed (highest payoff)
+
+The five negative results are publishable as-is, but they are a flat
+finding. With one mechanism ablation the contribution upgrades from
+"this doesn't work" to a design rule the field can use.
+
+Hypothesis to test: each physics-grounded augmentation produces two
+views (`augment_fn(x)`, `augment_fn(x)`) that are *too similar* to each
+other, so SimCLR's contrastive task is trivially easy and the encoder
+collapses. The handcrafted Gaussian-noise + temporal-mask baseline wins
+*because* it injects more nuisance variation, not because it is
+content-agnostic per se.
+
+Two cheap experiments make or break this:
+
+1. Per-augmentation **inter-view cosine similarity** averaged over the
+   SSL training set. If the physics-grounded augs land near 1.0 and
+   `gaussian_then_mask` lands materially lower, the hypothesis is
+   supported.
+2. **Composition with the handcrafted baseline**: for each slice, run
+   `your_physical_aug ∘ gaussian_then_mask` as the SSL augmentation. If
+   any composition beats `0.482`, the paper's prescription becomes
+   "physics-grounded augmentation must be *paired with* enough nuisance
+   perturbation — variation budget is the design rule, not physical
+   fidelity."
+
+Both experiments reuse all existing infrastructure (BVP loader,
+`bvp_methods.py`, the slices' augmentation functions). No new
+substrate, no new model.
+
+### B. Add one more exact published-baseline reproduction
+
+`MAE-UT-HAR = 0.843 (exact)` is the only clean reproduction. A second
+makes the methods section solid and the reproduction record harder to
+dismiss.
+
+Easiest target: `mae-raw-r2` — MAE on Widar3 raw CSI receiver-2 with
+the SSLCSI random 60/20/20 split, paper target SSLCSI Table 4c
+**= 0.692**. The exact spec is already on disk at
+`papers/team/mae-exact-spec.md` Row B. Implementation is a new raw-CSI
+loader (receiver=2, mean-pool to T=500, 22-class) and reuse of the
+existing MAE-UT-HAR ViT machinery.
+
+A second one-head-swap target if more is wanted: `moco-uthar` on the
+existing UT-HAR ViT encoder; SSLCSI Table 4c MoCo cell.
+
+### C. Try MAE-style physics-grounded *masking* instead of contrastive augmentation
+
+Each slice's physical insight could become a *masking pattern* in an
+MAE rather than an *augmentation* in SimCLR:
+
+- Slice 1 (Doppler) → mask coherent time windows
+- Slice 4 (coherence) → mask coherent subcarrier blocks
+- Slice 2 (static) → mask the time-mean component
+- Slice 3 (phase) → mask phase channels (needs complex-CSI substrate
+  like SignFi raw)
+- Slice 6 (composability) → combined time + subcarrier-block masking
+
+This sidesteps the contrastive-collapse problem entirely (MAE does not
+compare two views). On the same Widar3 BVP cross-subject, vanilla MAE
+already reaches **0.629 ± 0.010**, well above
+`bvp-simclr-handcrafted = 0.482`. If physics-informed MAE-masking
+beats vanilla MAE, that is a clean positive result on a working
+substrate — the paper's first un-disputed proposed-method win.
+
+### D. Substrate-diagnosis as a methodological contribution
+
+The Gate-1 evidence — raw-CSI cross-subject sits at chance for *every*
+SSL method tested (four method families, eight pipelines, all within
+±0.04 of chance) — is publishable on its own. Many CSI-SSL papers do
+not report substrate failure modes. A clear "verify your substrate
+before you tune your augmentation" message, supported by our Gate-1
+table, is methodologically useful to the field.
+
+This direction is essentially free — the diagnostic data is already on
+disk and in `papers/team/bvp-augmentation-hypotheses.md`. It mostly
+needs framing in the paper, not new experiments.
+
+### What to skip
+
+- **More seeds for the failing methods.** Std is 0.005–0.015 across 3
+  seeds; the verdict is settled.
+- **Slice 3 phase noise on SignFi.** SignFi is now downloaded but
+  saturated — CAPC paper-exact already lands at 1.000 on our protocol.
+  No headroom for a new method to demonstrate value.
+- **CLAR (diffusion-learned augmentation).** Heavy implementation; does
+  not differentiate against our slide-17 position any more sharply than
+  MAE-style masking already does.
+- **Hyperparameter sweeps of the failing augmentations.** If the
+  *category* fails (single-physical-transformation views), tuning
+  hyperparameters within the category is unlikely to flip the verdict.
+
+### Per-slice ownership for these follow-ups
+
+- **George**, **Chigozie**: drive the **A** mechanism analysis —
+  composition experiments fit naturally on top of their existing
+  augmentation code.
+- **Collins**: build `mae-raw-r2` under **B** — clean extension of the
+  existing MAE-UT-HAR work; second exact reproduction in scope.
+- **Ihunanya**, **Victor**: prototype **C** physics-informed
+  MAE-masking — Slice 4's coherent-mask is the closest to a masking
+  pattern already, and the composability framing transfers cleanly to
+  time + subcarrier-block masking.
+- **Josiah**: writeup and figure work for **D** — the substrate-
+  diagnosis section is largely already drafted in
+  `papers/team/bvp-augmentation-hypotheses.md`.
+
+### Headline the paper can defend today (with A1 alone)
+
+> We tested five physics-grounded augmentations for SimCLR on Widar3.0
+> BVP cross-subject; all five underperform a content-agnostic Gaussian
+> + temporal-mask baseline by 6.8–27.7 percentage points across 3
+> seeds. Inter-view similarity analysis suggests the failure mode is
+> contrastive-task collapse from views that share too much physical
+> structure; composing physics-grounded augmentations with strong
+> nuisance perturbations recovers performance. The result reframes
+> physics-grounded augmentation as a design problem in *variation
+> budget*, not physical fidelity.
+
+This is publishable. The optional add-ons (B, C, D) make the paper
+stronger in different dimensions; A is the keystone.
+
+## 10. Where the artifacts live
 
 - `papers/team/baselines-figure.md` and `.png` — figure with source numbers
 - `papers/team/sslcsi-grading-spec.md` — why SSLCSI cells were/weren't reachable
