@@ -137,6 +137,8 @@ def load_widar3_dat(
     parser = csiread.Intel(str(path), nrxnum=nrxnum, ntxnum=ntxnum)
     parser.read()
     csi = torch.from_numpy(parser.get_scaled_csi())  # (T, S, Nrx, Ntx) complex
+    if csi.numel() == 0 or csi.shape[0] == 0:
+        raise ValueError(f"empty CSI in {path}")
     if csi.ndim == 4:
         csi = csi.reshape(csi.shape[0], csi.shape[1], -1)
     real = csi_complex_to_real(csi)
@@ -166,6 +168,7 @@ class Widar3CrossSubject(Dataset):
     """
 
     DEFAULT_TEST_SUBJECTS: list[int] = [1, 2, 3, 4]
+    DEFAULT_RECEIVERS: list[int] = [1]
 
     def __init__(
         self,
@@ -175,6 +178,7 @@ class Widar3CrossSubject(Dataset):
         time_steps: int = CSI_T,
         num_classes: int = NUM_CLASSES,
         cache_path: str | Path | None = None,
+        receivers: list[int] | None = None,
     ) -> None:
         self.root = Path(root)
         self.train = train
@@ -183,6 +187,7 @@ class Widar3CrossSubject(Dataset):
         )
         self.time_steps = time_steps
         self.num_classes = num_classes
+        self.receivers = list(self.DEFAULT_RECEIVERS if receivers is None else receivers)
         self.cache_path = Path(cache_path) if cache_path else None
 
         cache_meta = {
@@ -190,6 +195,7 @@ class Widar3CrossSubject(Dataset):
             "test_subjects": sorted(self.test_subjects),
             "time_steps": self.time_steps,
             "num_classes": self.num_classes,
+            "receivers": sorted(self.receivers),
         }
 
         if self.cache_path is not None and self.cache_path.exists():
@@ -211,6 +217,7 @@ class Widar3CrossSubject(Dataset):
         else:
             items = [it for it in items if it[1]["user"] in self.test_subjects]
         items = [it for it in items if 1 <= it[1]["gesture"] <= self.num_classes]
+        items = [it for it in items if it[1]["receiver"] in self.receivers]
 
         if len(items) == 0:
             raise RuntimeError(
@@ -220,9 +227,19 @@ class Widar3CrossSubject(Dataset):
 
         xs: list[torch.Tensor] = []
         ys: list[int] = []
+        skipped = 0
         for path, meta in items:
-            xs.append(load_widar3_dat(path, time_steps=self.time_steps))
-            ys.append(meta["gesture"] - 1)  # to 0-indexed
+            try:
+                xs.append(load_widar3_dat(path, time_steps=self.time_steps))
+                ys.append(meta["gesture"] - 1)  # to 0-indexed
+            except ValueError:
+                skipped += 1
+        if skipped:
+            print(f"[Widar3CrossSubject] skipped {skipped} empty .dat files")
+        if not xs:
+            raise RuntimeError(
+                f"every .dat under {self.root!r} was empty; check the data"
+            )
 
         self._x = torch.stack(xs, dim=0)
         self._y = torch.tensor(ys, dtype=torch.long)
