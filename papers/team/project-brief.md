@@ -204,7 +204,7 @@ unfalsifiable-because-saturated wins would have been.
 
 Four directions, ordered by *expected paper-value per unit of effort*.
 
-### A. Investigate *why* the physics-grounded augmentations failed (highest payoff)
+### A. Investigate *why* the physics-grounded augmentations failed 
 
 The five negative results are publishable as-is, but they are a flat
 finding. With one mechanism ablation the contribution upgrades from
